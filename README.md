@@ -1,3 +1,3 @@
 # polarity music tools
 
-some presets, sounds & projects  for everyone
+all sounds & presets are created by myself. you can use it in your productions.
