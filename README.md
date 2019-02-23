@@ -1,2 +1,3 @@
-# polarity-music-presets
-some presets for everyone
+# polarity music tools
+
+some presets, sounds & projects  for everyone
