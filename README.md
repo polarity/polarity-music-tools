@@ -1,3 +1,4 @@
+![Header](cover.png)
 # polarity music tools
 
 All sounds & presets are created by myself. you can use it in your productions.
