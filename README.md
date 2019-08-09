@@ -14,3 +14,4 @@ I separated all my music goodies into different repositories:
 - 📋 [Bitwig Projects by Polarity](https://github.com/polarity/bitwig-projects) - My free to use Bitwig projects
 - 💽 [Bitwig Artist Collection](https://github.com/polarity/bitwig-artist-collection) - My official Bitwig 2.0 package
 - ❤️ [Bitwig Community Presets](https://github.com/polarity/bitwig-community-presets) - presets collected from the bitwig discord
+- 🎹 [Bitwig Pianobook](https://github.com/polarity/bitwig-pianobook) - different pianos sampled as bitwig presets
