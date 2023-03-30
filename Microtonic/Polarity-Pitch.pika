@@ -1,0 +1,146 @@
+// Polarity Pitch
+// sets the frequency of oscillators and filters
+// to the nearest D# for musicality
+// 
+// this is pika script, for some reason
+// the creator decided to invent his own language
+// doc was not very helpful, so i just made
+// it as straightforward as possible
+// and also hardcoded the notes
+
+transposePreset = function {
+	args(@preset);
+
+	// loop through all the drum pads or channels
+	for (ch = 1; ch <= CHANNEL_COUNT; ++ch) {
+		c = @[preset].drumPatches[ch];
+			
+			// set all eq to all possible D#s
+			// the values are a bit weird between
+			// 0 = 20hz and 1 = 20khz
+			
+			// set the eq freq
+			if([c].EQFreq > 0) {
+				targetEQFreq = min(max(0.0965, 0), 1);
+			};
+			if([c].EQFreq >= 0.1965) {
+				targetEQFreq = min(max(0.1965, 0), 1);
+			};
+			if([c].EQFreq >= 0.2965) {
+				targetEQFreq = min(max(0.2965, 0), 1);
+			};
+			if([c].EQFreq >= 0.3965) {
+				targetEQFreq = min(max(0.3965, 0), 1);
+			};
+			if([c].EQFreq >= 0.4965) {
+				targetEQFreq = min(max(0.4966, 0), 1);
+			};
+			if([c].EQFreq >= 0.5965) {
+				targetEQFreq = min(max(0.5965, 0), 1);
+			};
+			if([c].EQFreq >= 0.6965) {
+				targetEQFreq = min(max(0.6965, 0), 1);
+			};
+			if([c].EQFreq >= 0.7965) {
+				targetEQFreq = min(max(0.7965, 0), 1);
+			};
+			if([c].EQFreq >= 0.8965) {
+				targetEQFreq = min(max(0.8965, 0), 1);
+			};
+
+			// set the freq for the oscillator
+			if([c].OscFreq >= 0) {
+				targetOscFreq = min(max(0.0965, 0), 1);
+			};
+			if([c].OscFreq >= 0.1965) {
+				targetOscFreq = min(max(0.1965, 0), 1);
+			};
+			if([c].OscFreq >= 0.2965) {
+				targetOscFreq = min(max(0.2965, 0), 1);
+			};
+			if([c].OscFreq >= 0.3965) {
+				targetOscFreq = min(max(0.3965, 0), 1);
+			};
+			if([c].OscFreq >= 0.4965) {
+				targetOscFreq = min(max(0.4965, 0), 1);
+			};
+			if([c].OscFreq >= 0.5965) {
+				targetOscFreq = min(max(0.5965, 0), 1);
+			};
+			if([c].OscFreq >= 0.6965) {
+				targetOscFreq = min(max(0.6965, 0), 1);
+			};
+			if([c].OscFreq >= 0.7965) {
+				targetOscFreq = min(max(0.7965, 0), 1);
+			};
+			if([c].OscFreq >= 0.8965) {
+				targetOscFreq = min(max(0.8965, 0), 1);
+			};
+
+			// set the filter frequency
+			if([c].NFilFrq >= 0) {
+				targetNFilFrq = min(max(0.0965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.1965) {
+				targetNFilFrq = min(max(0.1965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.2965) {
+				targetNFilFrq = min(max(0.2965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.3965) {
+				targetNFilFrq = min(max(0.3965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.4965) {
+				targetNFilFrq = min(max(0.4965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.5965) {
+				targetNFilFrq = min(max(0.5965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.6965) {
+				targetNFilFrq = min(max(0.6965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.7965) {
+				targetNFilFrq = min(max(0.7965, 0), 1);
+			};
+			if([c].NFilFrq >= 0.8965) {
+				targetNFilFrq = min(max(0.8965, 0), 1);
+			};
+
+			// set the frequencies
+			[c].EQFreq = targetEQFreq;
+			[c].OscFreq = targetOscFreq;
+			[c].NFilFrq = targetNFilFrq;
+	};
+};
+
+// main func
+function {
+
+	// remember the morph slider position
+	originalMorph = getParam('Morph');
+
+	// move morph slider to the left
+	setParam('Morph', 0.0);
+	// get the left preset / values
+	getElement('preset', @left);
+
+	// move morph slider to the right
+	setParam('Morph', 1.0);
+	// remember right preset / values
+	getElement('preset', @right);
+	
+	// transpose both presets to the nearest D#
+	transposePreset(@left);
+	transposePreset(@right);
+
+	// move the morph slider and set left and right preset
+	// with the new values
+	setParam('Morph', 0.0);
+	setElement('preset', @left);
+	setParam('Morph', 1.0);
+	setElement('preset', @right);		
+
+	// set the original morph slider position
+	setParam('Morph', originalMorph);
+
+}();
