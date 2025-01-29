@@ -1,0 +1,326 @@
+/**
+ * Melody Maker
+ * controller script for Bitwig Studio
+ * Generates random melodies based on the given parameters
+ * @version 0.1
+ * @author Polarity
+ */
+
+loadAPI(17)
+host.setShouldFailOnDeprecatedUse(true)
+host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
+
+// define the dropdown options for the ui
+const listScaleMode = ['Chromatic', 'Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian', 'WholeTone', 'Hirajoshi', 'MajorPentatonic', 'MinorPentatonic', 'Blues', 'Arabic']
+const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+// store the generated notes in a global variable
+let globalNoteData = []
+
+/**
+ * Generate a note sequence based on the given parameters
+ *
+ * @param {*} param0 - object with all the parameters for the note generation
+ * @returns {Array} - array of note objects
+ */
+function generateNoteSequence ({
+  scale,
+  scaleMode,
+  octaveStart,
+  octaveRange,
+  probability,
+  restProbability,
+  lengthInBars,
+  repetitionChance,
+  noteLengthVariation,
+  channelNumber,
+  allowRepeatNotes = false
+}) {
+  // Reset global data
+  globalNoteData = []
+
+  // Scale interval definitions
+  const SCALE_MODES = {
+    Chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    Ionian: [0, 2, 4, 5, 7, 9, 11],
+    Dorian: [0, 2, 3, 5, 7, 9, 10],
+    Phrygian: [0, 1, 3, 5, 7, 8, 10],
+    Lydian: [0, 2, 4, 6, 7, 9, 11],
+    Mixolydian: [0, 2, 4, 5, 7, 9, 10],
+    Aeolian: [0, 2, 3, 5, 7, 8, 10],
+    Locrian: [0, 1, 3, 5, 6, 8, 10],
+    WholeTone: [0, 2, 4, 6, 8, 10],
+    Hirajoshi: [0, 2, 3, 7, 8],
+    MajorPentatonic: [0, 2, 4, 7, 9],
+    MinorPentatonic: [0, 3, 5, 7, 10],
+    Blues: [0, 3, 5, 6, 7, 10],
+    Arabic: [0, 1, 4, 5, 7, 8, 11]
+  }
+
+  // Calculate the base note value based on the scale and octave
+  const baseNote = (scale - 1) + (octaveStart + 1) * 12
+
+  // Store the last pitch to avoid repeating the same note
+  let lastPitch = null
+
+  // Generate a random index based on the given weights
+  const weightedRandom = weights => {
+    const sum = weights.reduce((a, b) => a + b, 0)
+    let rand = Math.random() * sum
+    return weights.findIndex(w => (rand -= w) < 0)
+  }
+
+  /**
+   * Calculate the note length based on the given probability
+   * @param {number} noteLengthVariation - note length variation intensity
+   * @returns {number} - note length in bars
+   */
+  const getNoteLength = () => {
+    const lengthOptions = [
+      { value: 0.25, weight: Math.max(0, 100 - noteLengthVariation) },
+      { value: 0.5, weight: noteLengthVariation * 0.6 },
+      { value: 1, weight: noteLengthVariation * 0.3 },
+      { value: 2, weight: noteLengthVariation * 0.1 }
+    ]
+
+    // Normalize weights
+    const weights = lengthOptions.map(opt => opt.weight)
+
+    // Return a random length based on the weights
+    return lengthOptions[weightedRandom(weights)].value
+  }
+
+  /**
+   * Calculate the pitch value based on the given probability and scale mode
+   * Also handles the octave range and note repetition
+   * @returns {number} - pitch value between 0 and 127
+   */
+  const calculatePitch = () => {
+    const degreeIndex = weightedRandom(probability.map(p => p / 100))
+    const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
+    const octaveOffset = Math.floor(Math.random() * octaveRange)
+    let pitch = baseNote + interval + (12 * octaveOffset)
+
+    // Avoid repeating the same note
+    if (!allowRepeatNotes && lastPitch === pitch) {
+      const alternatives = [
+        pitch + 7, // Perfect Fifth
+        pitch - 7,
+        pitch + 5, // Perfect Fourth
+        pitch - 5,
+        pitch + 12, // Octave up
+        pitch - 12 // Octave down
+      ].filter(p => p >= 0 && p <= 127)
+
+      // Pick a random alternative if available
+      if (alternatives.length > 0) {
+        pitch = alternatives[Math.floor(Math.random() * alternatives.length)]
+      }
+    }
+
+    // Store the last pitch for the next iteration
+    lastPitch = pitch
+
+    // Return the pitch value clamped between 0 and 127
+    return Math.min(127, Math.max(0, pitch))
+  }
+
+  // Initializations
+  const totalSteps = lengthInBars * 16
+  let currentPosition = 0
+  const history = []
+
+  // Main loop
+  // Generate notes until the total steps are reached
+  // or the history is empty
+  while (currentPosition < totalSteps) {
+    // Handle repetitions
+    if (history.length > 1 && Math.random() * 100 < repetitionChance) {
+      const repeatLength = Math.min(history.length, Math.floor(Math.random() * 4) + 1)
+      const source = history.slice(-repeatLength)
+
+      // Repeat the last notes
+      for (const note of source) {
+        // Check if the note fits in the remaining steps
+        if (currentPosition >= totalSteps) break
+        const stepsNeeded = (note.length / 0.25)
+
+        // Check if the note fits in the remaining steps
+        if (Math.random() * 100 > restProbability) {
+          // Add the repeated note to the global data
+          globalNoteData.push({
+            position: currentPosition,
+            pitch: note.pitch,
+            velocity: note.velocity,
+            length: note.length
+          })
+        }
+
+        // Move the current position
+        currentPosition += stepsNeeded
+      }
+      continue
+    }
+
+    // Generate new note
+    const noteLength = getNoteLength()
+    const stepsNeeded = noteLength / 0.25
+
+    // Check if the note fits in the remaining steps
+    if (currentPosition + stepsNeeded > totalSteps) {
+      currentPosition = totalSteps
+      break
+    }
+
+    // Check if the note should be a rest
+    if (Math.random() * 100 > restProbability) {
+      const velocity = 25 + Math.floor(Math.random() * 70)
+      const pitch = calculatePitch()
+
+      // Add the note to the global data
+      globalNoteData.push({
+        position: currentPosition,
+        pitch: pitch,
+        velocity: velocity,
+        length: noteLength
+      })
+
+      // Add the note to the history
+      history.push({
+        pitch: pitch,
+        velocity: velocity,
+        length: noteLength
+      })
+    }
+    // Move the current position
+    currentPosition += stepsNeeded
+
+    // Remove the oldest note from the history
+    if (history.length > 8) history.shift()
+  }
+
+  // Return the generated note data
+  return globalNoteData
+}
+
+/**
+ * Write the generated notes to the cursor clip
+ * @param {*} channelNumber - channel number of the note
+ * @param {*} cursorClip - cursor clip to write the notes to
+ */
+function writeNotesToClip (channelNumber, cursorClip) {
+  globalNoteData.forEach(note => {
+    cursorClip.setStep(
+      channelNumber,
+      note.position,
+      note.pitch,
+      note.velocity,
+      note.length
+    )
+  })
+}
+
+/*
+ * init the Bitwig Controller script
+ */
+function init () {
+  println('-- Melody Maker Go! --')
+
+  const documentState = host.getDocumentState()
+  const cursorClipArranger = host.createArrangerCursorClip(16, 128)
+  const cursorClipLauncher = host.createLauncherCursorClip(16, 128)
+  cursorClipArranger.scrollToKey(0)
+  cursorClipLauncher.scrollToKey(0)
+
+  // define UI elements and their default values
+  const selectedScaleMode = documentState.getEnumSetting('Scale Mode', 'Melody Generator', listScaleMode, 'Ionian')
+  const selectedScale = documentState.getEnumSetting('Scale', 'Melody Generator', listScale, 'C')
+  const restProbability = documentState.getNumberSetting('Rest Probability', 'Melody Generator', 0, 100, 0.1, '%', 0)
+  const repetitionChance = documentState.getNumberSetting('Repetition', 'Melody Generator', 0, 100, 0.1, '%', 0)
+  const noteLengthVariation = documentState.getNumberSetting('Note Length Variation', 'Melody Generator', 0, 100, 0.1, '%', 0)
+  const octaveStart = documentState.getNumberSetting('Octave Start', 'Melody Generator', 0, 8, 1, 'Octave', 3)
+  const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
+  const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
+  const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
+  const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
+  const noteProb3 = documentState.getNumberSetting('3rd Probability Mediant', 'Melody Generator', 0, 100, 0.1, '%', 10)
+  const noteProb4 = documentState.getNumberSetting('4th Probability Subdominant', 'Melody Generator', 0, 100, 0.1, '%', 20)
+  const noteProb5 = documentState.getNumberSetting('5th Probability Dominant', 'Melody Generator', 0, 100, 0.1, '%', 20)
+  const noteProb6 = documentState.getNumberSetting('6th Probability Submediant', 'Melody Generator', 0, 100, 0.1, '%', 5)
+  const noteProb7 = documentState.getNumberSetting('7th Probability Leading Note ', 'Melody Generator', 0, 100, 0.1, '%', 5)
+
+  /**
+   * Generate a new melody based on the given parameters
+   * we use this method for the two button actions
+   * generating for a launcher clip or arranger clip
+   * not sure why this is split up lol (maybe im dumb)
+   */
+  const generate = () => {
+    // generate new notes
+    generateNoteSequence({
+      scale: parseInt(listScale.indexOf(selectedScale.get())) + 1, // the chosen scale
+      scaleMode: selectedScaleMode.get(), // the chosen scale mode
+      octaveStart: octaveStart.getRaw(), // in which octave to start
+      octaveRange: octaveRange.getRaw(), // how many octaves to use
+      probability: [
+        (noteProb1.get() * 100), // probability for each note in the scale
+        (noteProb2.get() * 100),
+        (noteProb3.get() * 100),
+        (noteProb4.get() * 100),
+        (noteProb5.get() * 100),
+        (noteProb6.get() * 100),
+        (noteProb7.get() * 100)
+      ],
+      restProbability: (restProbability.get() * 100), // how likely a rest is
+      lengthInBars: 1, // how many bars to generate (you need to adust host.createArrangerCursorClip(16, 128) also)
+      repetitionChance: (repetitionChance.get() * 100), // how likely a repetition is
+      noteLengthVariation: (noteLengthVariation.get() * 100), // how much the note length can vary
+      channelNumber: 0, // the channel number to write the notes to (midi channel)
+      allowRepeatNotes: (allowRepeatNotes.get() === 'Yes') // allow repeating notes
+    })
+  }
+
+  // define the generate button for the Arranger
+  documentState.getSignalSetting('Generate in Arranger!', 'Melody Generator', 'Generate in Arranger!').addSignalObserver(() => {
+    // clear all notes from the clip
+    cursorClipArranger.clearSteps()
+    // generate new notes
+    generate()
+    // write the generated notes to the clip
+    writeNotesToClip(0, cursorClipArranger)
+  })
+
+  // define the generate button for the Arranger
+  documentState.getSignalSetting('Generate in Launcher!', 'Melody Generator', 'Generate in Launcher!').addSignalObserver(() => {
+    // clear all notes from the clip
+    cursorClipLauncher.clearSteps()
+    // generate new notes
+    generate()
+    // write the generated notes to the clip
+    writeNotesToClip(0, cursorClipLauncher)
+  })
+
+  // define the repaint button
+  documentState.getSignalSetting('Repaint Arranger', 'Melody Generator', 'Repaint Arranger!').addSignalObserver(() => {
+    // clear all notes from the clip
+    cursorClipArranger.clearSteps()
+    // write the generated notes to the clip
+    writeNotesToClip(0, cursorClipArranger)
+  })
+
+  // define the repaint button
+  documentState.getSignalSetting('Repaint Launcher', 'Melody Generator', 'Repaint Launcher!').addSignalObserver(() => {
+    // clear all notes from the clip
+    cursorClipLauncher.clearSteps()
+    // write the generated notes to the clip
+    writeNotesToClip(0, cursorClipLauncher)
+  })
+}
+
+function flush () {
+  // nothing to do here
+}
+
+function exit () {
+  println('-- Melody Maker Bye! --')
+}
