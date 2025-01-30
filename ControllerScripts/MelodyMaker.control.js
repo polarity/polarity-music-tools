@@ -227,8 +227,8 @@ function init () {
   println('-- Melody Maker Go! --')
 
   const documentState = host.getDocumentState()
-  const cursorClipArranger = host.createArrangerCursorClip(16, 128)
-  const cursorClipLauncher = host.createLauncherCursorClip(16, 128)
+  const cursorClipArranger = host.createArrangerCursorClip((16 * 8), 128)
+  const cursorClipLauncher = host.createLauncherCursorClip((16 * 8), 128)
   cursorClipArranger.scrollToKey(0)
   cursorClipLauncher.scrollToKey(0)
 
@@ -240,6 +240,7 @@ function init () {
   const noteLengthVariation = documentState.getNumberSetting('Note Length Variation', 'Melody Generator', 0, 100, 0.1, '%', 0)
   const octaveStart = documentState.getNumberSetting('Octave Start', 'Melody Generator', 0, 8, 1, 'Octave', 3)
   const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
+  const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
   const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
   const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
   const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
@@ -272,7 +273,7 @@ function init () {
         (noteProb7.get() * 100)
       ],
       restProbability: (restProbability.get() * 100), // how likely a rest is
-      lengthInBars: 1, // how many bars to generate (you need to adust host.createArrangerCursorClip(16, 128) also)
+      lengthInBars: barsToGenerate.getRaw(), // how many bars to generate (you need to adust host.createArrangerCursorClip(16, 128) also)
       repetitionChance: (repetitionChance.get() * 100), // how likely a repetition is
       noteLengthVariation: (noteLengthVariation.get() * 100), // how much the note length can vary
       channelNumber: 0, // the channel number to write the notes to (midi channel)
