@@ -18,12 +18,12 @@ const booleanOption = ['No', 'Yes']
 // you can look them up here: https://en.wikipedia.org/wiki/List_of_musical_scales_and_modes
 const scaleIntervals = {
   Chromatic: [1],
-  Ionian: [2, 2, 1, 2, 2, 2, 1],
+  Major: [2, 2, 1, 2, 2, 2, 1],
   Dorian: [2, 1, 2, 2, 2, 1, 2],
   Phrygian: [1, 2, 2, 2, 1, 2, 2],
   Lydian: [2, 2, 2, 1, 2, 2, 1],
   Mixolydian: [2, 2, 1, 2, 2, 1, 2],
-  Aeolian: [2, 1, 2, 2, 1, 2, 2],
+  Minor: [2, 1, 2, 2, 1, 2, 2],
   Locrian: [1, 2, 2, 1, 2, 2, 2],
   'Harmonic Minor': [2, 1, 2, 2, 1, 3, 1],
   'Melodic Minor': [2, 1, 2, 2, 2, 2, 1],
