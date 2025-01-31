@@ -252,6 +252,15 @@ function init () {
   const noteProb5 = documentState.getNumberSetting('5th Probability Dominant', 'Melody Generator', 0, 100, 0.1, '%', 20)
   const noteProb6 = documentState.getNumberSetting('6th Probability Submediant', 'Melody Generator', 0, 100, 0.1, '%', 5)
   const noteProb7 = documentState.getNumberSetting('7th Probability Leading Note ', 'Melody Generator', 0, 100, 0.1, '%', 5)
+  const clipType = documentState.getEnumSetting('Clip Type', 'Melody Generator', ['Launcher', 'Arranger'], 'Arranger')
+
+  /**
+   * get the correct cursor clip based on the selected clip type
+   * @returns {CursorClip} - the cursor clip based on the selected clip type
+   */
+  function getCursorClip () {
+    return clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
+  }
 
   /**
    * Generate a new melody based on the given parameters
@@ -285,39 +294,21 @@ function init () {
   }
 
   // define the generate button for the Arranger
-  documentState.getSignalSetting('Generate in Arranger!', 'Melody Generator', 'Generate in Arranger!').addSignalObserver(() => {
+  documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate in Arranger!').addSignalObserver(() => {
     // clear all notes from the clip
-    cursorClipArranger.clearSteps()
+    getCursorClip().clearSteps()
     // generate new notes
     generate()
     // write the generated notes to the clip
-    writeNotesToClip(0, cursorClipArranger)
-  })
-
-  // define the generate button for the Arranger
-  documentState.getSignalSetting('Generate in Launcher!', 'Melody Generator', 'Generate in Launcher!').addSignalObserver(() => {
-    // clear all notes from the clip
-    cursorClipLauncher.clearSteps()
-    // generate new notes
-    generate()
-    // write the generated notes to the clip
-    writeNotesToClip(0, cursorClipLauncher)
+    writeNotesToClip(0, getCursorClip())
   })
 
   // define the repaint button
-  documentState.getSignalSetting('Repaint Arranger', 'Melody Generator', 'Repaint Arranger!').addSignalObserver(() => {
+  documentState.getSignalSetting('Repaint', 'Melody Generator', 'Repaint Arranger!').addSignalObserver(() => {
     // clear all notes from the clip
-    cursorClipArranger.clearSteps()
+    getCursorClip().clearSteps()
     // write the generated notes to the clip
-    writeNotesToClip(0, cursorClipArranger)
-  })
-
-  // define the repaint button
-  documentState.getSignalSetting('Repaint Launcher', 'Melody Generator', 'Repaint Launcher!').addSignalObserver(() => {
-    // clear all notes from the clip
-    cursorClipLauncher.clearSteps()
-    // write the generated notes to the clip
-    writeNotesToClip(0, cursorClipLauncher)
+    writeNotesToClip(0, getCursorClip())
   })
 }
 
