@@ -11,8 +11,29 @@ host.setShouldFailOnDeprecatedUse(true)
 host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
 
 // define the dropdown options for the ui
-const listScaleMode = ['Chromatic', 'Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian', 'WholeTone', 'Hirajoshi', 'MajorPentatonic', 'MinorPentatonic', 'Blues', 'Arabic']
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+// Scale interval definitions
+const SCALE_MODES = {
+  Chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+  Ionian: [0, 2, 4, 5, 7, 9, 11],
+  Dorian: [0, 2, 3, 5, 7, 9, 10],
+  Phrygian: [0, 1, 3, 5, 7, 8, 10],
+  Lydian: [0, 2, 4, 6, 7, 9, 11],
+  Mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  Aeolian: [0, 2, 3, 5, 7, 8, 10],
+  Locrian: [0, 1, 3, 5, 6, 8, 10],
+  WholeTone: [0, 2, 4, 6, 8, 10],
+  Hirajoshi: [0, 2, 3, 7, 8],
+  MajorPentatonic: [0, 2, 4, 7, 9],
+  MinorPentatonic: [0, 3, 5, 7, 10],
+  Blues: [0, 3, 5, 6, 7, 10],
+  Arabic: [0, 1, 4, 5, 7, 8, 11]
+}
+
+// convert scaleIntervals object to an array of names
+// we need this for the dropdown in the UI
+const listScaleMode = Object.keys(SCALE_MODES)
 
 // store the generated notes in a global variable
 let globalNoteData = []
@@ -38,24 +59,6 @@ function generateNoteSequence ({
 }) {
   // Reset global data
   globalNoteData = []
-
-  // Scale interval definitions
-  const SCALE_MODES = {
-    Chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    Ionian: [0, 2, 4, 5, 7, 9, 11],
-    Dorian: [0, 2, 3, 5, 7, 9, 10],
-    Phrygian: [0, 1, 3, 5, 7, 8, 10],
-    Lydian: [0, 2, 4, 6, 7, 9, 11],
-    Mixolydian: [0, 2, 4, 5, 7, 9, 10],
-    Aeolian: [0, 2, 3, 5, 7, 8, 10],
-    Locrian: [0, 1, 3, 5, 6, 8, 10],
-    WholeTone: [0, 2, 4, 6, 8, 10],
-    Hirajoshi: [0, 2, 3, 7, 8],
-    MajorPentatonic: [0, 2, 4, 7, 9],
-    MinorPentatonic: [0, 3, 5, 7, 10],
-    Blues: [0, 3, 5, 6, 7, 10],
-    Arabic: [0, 1, 4, 5, 7, 8, 11]
-  }
 
   // Calculate the base note value based on the scale and octave
   const baseNote = (scale - 1) + (octaveStart + 1) * 12
