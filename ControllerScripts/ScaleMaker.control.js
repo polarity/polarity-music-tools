@@ -345,6 +345,14 @@ function init () {
   const cursorClipLauncher = host.createLauncherCursorClip((16 * 8), 128)
   cursorClipArranger.scrollToKey(0)
 
+  /**
+   * get the correct cursor clip based on the selected clip type
+   * @returns {CursorClip} - the cursor clip based on the selected clip type
+   */
+  function getCursorClip () {
+    return clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
+  }
+
   // UI settings
   const selectedScaleMode = documentState.getEnumSetting('Scale Mode', 'Scale Maker', listScaleMode, 'Ionian')
   const selectedScale = documentState.getEnumSetting('Scale', 'Scale Maker', listScale, 'C')
@@ -393,34 +401,18 @@ function init () {
     // continuous Mode corrects the notes on the fly
     // can maybe stress the cpu too much, so you can decide to turn it off
     if (booleanOption.indexOf(continuousMode.get()) === 1) {
-      // where do we write in???
-      let cursorClip = cursorClipArranger
-      if (clipType.get() === 'Launcher') {
-        cursorClip = cursorClipLauncher
-      }
-
-      correctNotesToScale(cursorClip, selectedScaleMode, selectedScale)
+      correctNotesToScale(getCursorClip(), selectedScaleMode, selectedScale)
     }
   })
 
   // Fit to Scale Button observer, when user clicks the button
   documentState.getSignalSetting('Fit to Scale', 'Scale Maker', 'Fit to Scale').addSignalObserver(() => {
-    // where do we write in???
-    let cursorClip = cursorClipArranger
-    if (clipType.get() === 'Launcher') {
-      cursorClip = cursorClipLauncher
-    }
-    correctNotesToScale(cursorClip, selectedScaleMode, selectedScale)
+    correctNotesToScale(getCursorClip(), selectedScaleMode, selectedScale)
   })
 
   // Write all notes of the scale to the first step of the cursorClip
   documentState.getSignalSetting('Write Note Stack', 'Scale Maker', 'Write Note Stack').addSignalObserver(() => {
-    // where do we write in???
-    let cursorClip = cursorClipArranger
-    if (clipType.get() === 'Launcher') {
-      cursorClip = cursorClipLauncher
-    }
-    writeAllNotesOfScale(cursorClip, selectedScaleMode, selectedScale)
+    writeAllNotesOfScale(getCursorClip(), selectedScaleMode, selectedScale)
   })
 }
 
