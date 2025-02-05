@@ -5,7 +5,6 @@
  * @version 0.1
  * @author Polarity
  */
-
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
 host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
@@ -13,23 +12,44 @@ host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf7
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
-// Scale interval definitions
-const SCALE_MODES = {
-  Chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-  Ionian: [0, 2, 4, 5, 7, 9, 11],
-  Dorian: [0, 2, 3, 5, 7, 9, 10],
-  Phrygian: [0, 1, 3, 5, 7, 8, 10],
-  Lydian: [0, 2, 4, 6, 7, 9, 11],
-  Mixolydian: [0, 2, 4, 5, 7, 9, 10],
-  Aeolian: [0, 2, 3, 5, 7, 8, 10],
-  Locrian: [0, 1, 3, 5, 6, 8, 10],
-  WholeTone: [0, 2, 4, 6, 8, 10],
-  Hirajoshi: [0, 2, 3, 7, 8],
-  MajorPentatonic: [0, 2, 4, 7, 9],
-  MinorPentatonic: [0, 3, 5, 7, 10],
-  Blues: [0, 3, 5, 6, 7, 10],
-  Arabic: [0, 1, 4, 5, 7, 8, 11]
+// Define scale intervals
+// you can look them up here: https://en.wikipedia.org/wiki/List_of_musical_scales_and_modes
+const scaleIntervals = {
+  Chromatic: [1],
+  Ionian: [2, 2, 1, 2, 2, 2, 1],
+  Dorian: [2, 1, 2, 2, 2, 1, 2],
+  Phrygian: [1, 2, 2, 2, 1, 2, 2],
+  Lydian: [2, 2, 2, 1, 2, 2, 1],
+  Mixolydian: [2, 2, 1, 2, 2, 1, 2],
+  Aeolian: [2, 1, 2, 2, 1, 2, 2],
+  Locrian: [1, 2, 2, 1, 2, 2, 2],
+  'Harmonic Minor': [2, 1, 2, 2, 1, 3, 1],
+  'Melodic Minor': [2, 1, 2, 2, 2, 2, 1],
+  'Double Harmonic Minor': [1, 3, 1, 2, 1, 3, 1],
+  'Double Harmonic Major': [1, 3, 1, 2, 1, 3, 1],
+  'Phrygian Dominant': [1, 3, 1, 2, 1, 2, 2],
+  'Mixolydian Flat 6': [2, 2, 1, 2, 1, 2, 2],
+  'Lydian Dominant': [2, 2, 2, 1, 2, 1, 2],
+  'Lydian Diminished': [2, 1, 3, 1, 1, 2, 1], // W-H-3H-H-H-W-H
+  'Lydian Augmented': [2, 2, 2, 2, 1, 2, 1], // W-W-W-W-H-W-H
+  Iwato: [1, 4, 1, 4, 2], // H-2W-H-2W-W
+  Istrian: [1, 2, 1, 2, 1, 5], // H-W-H-W-H-5H
+  Iwato: [1, 4, 1, 4, 2], // H-2W-H-2W-W
+  'Whole Tone': [2, 2, 2, 2, 2, 2],
+  'Major Whole Tone': [2, 2, 1, 2, 1, 2, 1],
+  'Minor Whole Tone': [2, 1, 2, 1, 2, 2, 2],
+  Hirajoshi: [4, 2, 3, 4, 3],
+  'Major Pentatonic': [2, 2, 3, 2, 3],
+  'Minor Pentatonic': [3, 2, 2, 3, 2],
+  Blues: [3, 2, 1, 1, 3, 2],
+  Arabic: [2, 1, 3, 1, 2, 2, 1],
+  Persian: [1, 3, 1, 1, 2, 3, 1], // H-3H-H-H-W-3H-H
+  Prometheus: [2, 2, 2, 3, 1, 2], // W-W-W-3H-H-W
+  Pelog: [1, 2, 4, 1, 4]
 }
+
+// Usage:
+const SCALE_MODES = convertIntervalsToSemitones(scaleIntervals)
 
 // convert scaleIntervals object to an array of names
 // we need this for the dropdown in the UI
@@ -221,6 +241,27 @@ function writeNotesToClip (channelNumber, cursorClip) {
       note.length
     )
   })
+}
+
+/**
+ * this function converts the scale intervals to semitones
+ * so we can exchange the scale definitions easily
+ * @param {*} scaleIntervals
+ * @returns {Object} - converted scale intervals to semitones
+ */
+function convertIntervalsToSemitones (scaleIntervals) {
+  const convertedScales = {}
+  for (const [scaleName, intervals] of Object.entries(scaleIntervals)) {
+    let current = 0
+    const semitones = [current]
+    for (const interval of intervals) {
+      current += interval
+      semitones.push(current)
+    }
+    semitones.pop() // Remove the octave (12 semitone step (same note lol))
+    convertedScales[scaleName] = semitones
+  }
+  return convertedScales
 }
 
 /*
