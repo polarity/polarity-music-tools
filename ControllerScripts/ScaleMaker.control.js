@@ -227,12 +227,12 @@ function findNearestScaleNote (y, scaleNotes) {
 
 /**
  * Correct notes to the selected scale
- * @param {*} cursorClipArranger - cursorClipArranger object
+ * @param {*} cursorClip - cursorClip object (Arranger or Launcher)
  * @param {*} selectedScaleMode - selected scale mode
  * @param {*} selectedScale - selected scale
  * @returns {void} - corrects the notes in the clip to the selected scale
  */
-function correctNotesToScale (cursorClipArranger, selectedScaleMode, selectedScale) {
+function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
   const scaleMode = selectedScaleMode.get()
   const scaleName = selectedScale.get()
   const rootIndex = listScale.indexOf(scaleName)
@@ -302,7 +302,7 @@ function correctNotesToScale (cursorClipArranger, selectedScaleMode, selectedSca
 
       const dy = targetY - y
       if (dy !== 0) {
-        cursorClipArranger.moveStep(x, y, 0, dy)
+        cursorClip.moveStep(x, y, 0, dy)
       }
     }
   }
@@ -312,7 +312,7 @@ function correctNotesToScale (cursorClipArranger, selectedScaleMode, selectedSca
  * this method writes a big stack of notes on the first step of the cursorClip
  * to show which notes are in the scale and mode. we set the velocity to 0 to
  * mute the notes, its just for visualisation!
- * @param {*} cursorClipArranger
+ * @param {*} cursorClip
  * @param {*} selectedScaleMode
  * @param {*} selectedScale
  */
@@ -349,14 +349,21 @@ function init () {
   const documentState = host.getDocumentState()
   const cursorClipArranger = host.createArrangerCursorClip((16 * 8), 128)
   const cursorClipLauncher = host.createLauncherCursorClip((16 * 8), 128)
+  cursorClipArranger.addStepDataObserver(observingNotes)
+  cursorClipLauncher.addStepDataObserver(observingNotes)
   cursorClipArranger.scrollToKey(0)
+  cursorClipLauncher.scrollToKey(0)
 
   /**
    * get the correct cursor clip based on the selected clip type
    * @returns {CursorClip} - the cursor clip based on the selected clip type
    */
   function getCursorClip () {
-    return clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
+    if (clipType.get() === 'Arranger') {
+      return cursorClipArranger
+    } else {
+      return cursorClipLauncher
+    }
   }
 
   // UI settings
@@ -365,20 +372,20 @@ function init () {
   const continuousMode = documentState.getEnumSetting('Continuous Mode', 'Scale Maker', booleanOption, 'No')
   const clipType = documentState.getEnumSetting('Clip Type', 'Scale Maker', ['Launcher', 'Arranger'], 'Arranger')
 
-  // Registers an observer that reports which note grid steps/keys contain notes.
-  // Looks like the callback is called each time you select a note or multiple notes
-  // and it fires for every note that is selected. nice.
-  // callback - A callback function that receives three parameters:
-  // 1. the x (step) coordinate within the note grid (integer),
-  // 2. the y (key) coordinate within the note grid (integer),
-  // and 3. an integer value that indicates if the step is empty (`0`)
-  // or if a note continues playing (`1`) or starts playing (`2`).
-  // thanks Bitwig for the explanation  cursorClipArranger.addStepDataObserver((x, y, stat) => {
-  cursorClipArranger.addStepDataObserver((x, y, stat) => {
+  /**
+   * Observing notes
+   * This method is called when a note is added or removed in the clip
+   * It stores the notes in the global currentNotesInClip array
+   * and corrects the notes to the scale when continuousMode is on
+   * @param {*} x - step number
+   * @param {*} y - note number
+   * @param {*} stat - note status (0, 1, 2)
+   */
+  function observingNotes (x, y, stat) {
     // x is the step number (16 for each bar)
     // y is the note number (128) 60 = C3
     // stat gives info about 0 = no note,
-    // 1 = continous note (from the previous step),
+    // 1 = continuous note (from the previous step),
     // 2 = note starts playing
 
     // ok i want to store the note data in a multidimensional array,
@@ -409,7 +416,7 @@ function init () {
     if (booleanOption.indexOf(continuousMode.get()) === 1) {
       correctNotesToScale(getCursorClip(), selectedScaleMode, selectedScale)
     }
-  })
+  }
 
   // Fit to Scale Button observer, when user clicks the button
   documentState.getSignalSetting('Fit to Scale', 'Scale Maker', 'Fit to Scale').addSignalObserver(() => {
