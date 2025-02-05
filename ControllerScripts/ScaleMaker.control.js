@@ -13,9 +13,10 @@ host.defineController('Polarity', 'Scale Maker', '0.1', 'b3f52fc6-e887-4bb6-927a
 // Define the dropdown options for the UI
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const booleanOption = ['No', 'Yes']
+let scaleIntervals
 
 // load in the external scales.js file
-  load('scales.js')
+load('scales.js')
 
 // convert scaleIntervals object to an array of names
 // we need this for the dropdown in the UI
@@ -378,6 +379,11 @@ function init () {
       correctNotesToScale(getCursorClip(), selectedScaleMode, selectedScale)
     }
   }
+
+  // Write the Scale & Mode to the title of the clip
+  documentState.getSignalSetting('Name the Clip', 'Scale Maker', 'Name Clip').addSignalObserver(() => {
+    getCursorClip().setName(selectedScaleMode.get() + '-' + selectedScale.get())
+  })
 
   // Fit to Scale Button observer, when user clicks the button
   documentState.getSignalSetting('Fit to Scale', 'Scale Maker', 'Fit to Scale').addSignalObserver(() => {

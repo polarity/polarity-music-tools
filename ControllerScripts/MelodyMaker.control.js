@@ -11,9 +11,10 @@ host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf7
 
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+let scaleIntervals // will be filled in with scales from external file
 
 // load in the external scales.js file
-  load('scales.js')
+load('scales.js')
 
 // convert the scaleIntervals to semitones
 const SCALE_MODES = convertIntervalsToSemitones(scaleIntervals)
@@ -300,6 +301,11 @@ function init () {
       allowRepeatNotes: (allowRepeatNotes.get() === 'Yes') // allow repeating notes
     })
   }
+
+  // Write the Scale & Mode to the title of the clip
+  documentState.getSignalSetting('Name the Clip', 'Melody Generator', 'Name Clip').addSignalObserver(() => {
+    getCursorClip().setName(selectedScaleMode.get() + '-' + selectedScale.get())
+  })
 
   // define the generate button for the Arranger
   documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate!').addSignalObserver(() => {
