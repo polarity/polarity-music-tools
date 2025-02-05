@@ -341,7 +341,7 @@ function init () {
   }
 
   // define the generate button for the Arranger
-  documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate in Arranger!').addSignalObserver(() => {
+  documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate!').addSignalObserver(() => {
     // clear all notes from the clip
     getCursorClip().clearSteps()
     // generate new notes
@@ -351,7 +351,7 @@ function init () {
   })
 
   // define the repaint button
-  documentState.getSignalSetting('Repaint', 'Melody Generator', 'Repaint Arranger!').addSignalObserver(() => {
+  documentState.getSignalSetting('Repaint', 'Melody Generator', 'Repaint!').addSignalObserver(() => {
     // clear all notes from the clip
     getCursorClip().clearSteps()
     // write the generated notes to the clip
