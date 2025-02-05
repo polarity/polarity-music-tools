@@ -26,5 +26,7 @@ scaleIntervals = {
   Persian: [1, 3, 1, 1, 2, 3, 1], // H-3H-H-H-W-3H-H
   Prometheus: [2, 2, 2, 3, 1, 2], // W-W-W-3H-H-W
   Pelog: [1, 2, 4, 1, 4],
-  Chromatic: [1] // All 12 notes - leave this last
+  Chromatic: [1], // All 12 notes - leave this last
+  Ionian: [2, 2, 1, 2, 2, 2, 1], // Major scale (legacy)
+  Aeolian: [2, 1, 2, 2, 1, 2, 2] // Minor (legacy)
 }
