@@ -1,4 +1,4 @@
-const scaleIntervals = {
+scaleIntervals = {
   Lydian: [2, 2, 2, 1, 2, 2, 1], // Major scale with raised 4th
   Major: [2, 2, 1, 2, 2, 2, 1], // Major scale
   Mixolydian: [2, 2, 1, 2, 2, 1, 2], // Major scale with lowered 7th
