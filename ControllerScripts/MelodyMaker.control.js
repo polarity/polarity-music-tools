@@ -341,6 +341,30 @@ function init () {
     // write the generated notes to the clip
     writeNotesToClip(0, getCursorClip())
   })
+
+  // Added "Init Values" button to reset parameters thx @Terranoise
+  documentState.getSignalSetting('Init Values', 'Melody Generator', 'Reset values to defaults').addSignalObserver(() => {
+    // Reset enum settings with .set()
+    selectedScaleMode.set('Ionian')
+    selectedScale.set('C')
+    allowRepeatNotes.set('No')
+    clipType.set('Arranger')
+    // Reset number settings using .setRaw() to provide raw (actual) values
+    restProbability.setRaw(0)
+    repetitionChance.setRaw(0)
+    noteLengthVariation.setRaw(0)
+    octaveStart.setRaw(3)
+    octaveRange.setRaw(1)
+    barsToGenerate.setRaw(1)
+    noteProb1.setRaw(30)
+    noteProb2.setRaw(10)
+    noteProb3.setRaw(10)
+    noteProb4.setRaw(20)
+    noteProb5.setRaw(20)
+    noteProb6.setRaw(5)
+    noteProb7.setRaw(5)
+    host.showPopupNotification('Values reset to defaults')
+  })
 }
 
 function flush () {
