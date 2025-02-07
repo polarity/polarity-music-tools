@@ -18,6 +18,23 @@ let scaleIntervals
 // load in the external scales.js file
 load('scales.js')
 
+// check if scaleIntervals is defined and not empty
+// make sure to load the scales.js file before this script
+if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
+  scaleIntervals = {
+    Lydian: [2, 2, 2, 1, 2, 2, 1], // Major scale with raised 4th
+    Major: [2, 2, 1, 2, 2, 2, 1], // Major scale
+    Mixolydian: [2, 2, 1, 2, 2, 1, 2], // Major scale with lowered 7th
+    Dorian: [2, 1, 2, 2, 2, 1, 2], // Major scale with lowered 3rd and 7th
+    'Natural Minor': [2, 1, 2, 2, 1, 2, 2], // Major scale with lowered 3rd, 6th and 7th
+    Phrygian: [1, 2, 2, 2, 1, 2, 2], // Major scale with lowered 2nd, 3rd, 6th and 7th
+    Locrian: [1, 2, 2, 1, 2, 2, 2], // Major scale with lowered 2nd, 3rd, 5th, 6th and 7th
+    Chromatic: [1], // All 12 notes - leave this last
+    Ionian: [2, 2, 1, 2, 2, 2, 1], // Major scale (legacy)
+    Aeolian: [2, 1, 2, 2, 1, 2, 2] // Minor (legacy)
+  }
+}
+
 // convert scaleIntervals object to an array of names
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(scaleIntervals)
