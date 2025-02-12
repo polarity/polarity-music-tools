@@ -1,3 +1,5 @@
+loadAPI(17)
+
 /**
  * Melody Maker
  * controller script for Bitwig Studio
@@ -5,7 +7,7 @@
  * @version 0.1
  * @author Polarity
  */
-loadAPI(17)
+
 host.setShouldFailOnDeprecatedUse(true)
 host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
 
