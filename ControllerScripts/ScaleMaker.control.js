@@ -1,3 +1,5 @@
+loadAPI(17)
+
 /**
  * Scale Maker
  * Controller script for Bitwig Studio
@@ -6,7 +8,6 @@
  * @author Polarity
  */
 
-loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
 host.defineController('Polarity', 'Scale Maker', '0.1', 'b3f52fc6-e887-4bb6-927a-57b11a60e087', 'Polarity')
 
