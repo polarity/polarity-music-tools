@@ -262,28 +262,28 @@ function addSeventhNoteFromThird (progression) {
 }
 
 /**
- * Add a tenth note to each chord based on the root note.
- * This function adds the tenth note by shifting the third note by 14 semitones.
+ * Add a 9th note to each chord based on the root note.
+ * This function adds the 9th note by shifting the third note by 14 semitones.
  * @param {Array} progression - Array of chord objects.
  * @returns {Array} A new progression with added seventh notes.
  */
-function addTenthNoteFromRoot (progression) {
+function addNinthNoteFromRoot (progression) {
   return progression.map(chord => {
     // Find the third note in each chord (channel 2)
     const rootNote = chord.notes.find(note => note.channelNumber === 0)
     if (!rootNote) return chord
 
     // Create the seventh note by shifting the third note by 7 semitones
-    const tenthNote = {
+    const ninthNote = {
       ...rootNote,
       pitch: rootNote.pitch + 14,
       channelNumber: 9
     }
 
-    // Return chord with the tenth note added
+    // Return chord with the 9th note added
     return {
       ...chord,
-      notes: [...chord.notes, tenthNote]
+      notes: [...chord.notes, ninthNote]
     }
   })
 }
@@ -470,8 +470,8 @@ function init () {
   const revoiceMinInterval = documentState.getNumberSetting('Revoice Min Interval', 'Chord Maker', 1, 3, 1, 'sem', 2)
   const revoicePedalChannel = documentState.getNumberSetting('Revoice Pedal Channel', 'Chord Maker', 0, 16, 1, 'channel', 0)
   const addBass = documentState.getEnumSetting('Add Bass?', 'Chord Maker', ['Yes', 'No'], 'No')
-  const addSeventh = documentState.getEnumSetting('Add Seventh?', 'Chord Maker', ['Yes', 'No'], 'No')
-  const addTenth = documentState.getEnumSetting('Add Tenth?', 'Chord Maker', ['Yes', 'No'], 'No')
+  const add7th = documentState.getEnumSetting('Add 7th?', 'Chord Maker', ['Yes', 'No'], 'No')
+  const add9th = documentState.getEnumSetting('Add 9th?', 'Chord Maker', ['Yes', 'No'], 'No')
 
   /**
    * Get the cursor clip based on the selected clip type
@@ -494,11 +494,11 @@ function init () {
     // clear all notes from the clip
     getCursorClip().clearSteps()
 
-    if (addSeventh.get() === 'Yes') {
+    if (add7th.get() === 'Yes') {
       currentProgression = addSeventhNoteFromThird(currentProgression)
     }
-    if (addTenth.get() === 'Yes') {
-      currentProgression = addTenthNoteFromRoot(currentProgression)
+    if (add9th.get() === 'Yes') {
+      currentProgression = addNinthNoteFromRoot(currentProgression)
     }
 
     // revoice the chords to minimize the distance between successive chord tones
