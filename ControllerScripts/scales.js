@@ -57,4 +57,25 @@ scaleIntervals = {
   'Two-semitone tritone': [1, 1, 4, 1, 1, 4],
   'Ukrainian Dorian': [2, 1, 3, 1, 2, 1, 2],
   'Yo': [2, 3, 2, 2, 3],
+  'Whole Tone Major': [2, 2, 2, 2, 2, 2], // Whole tone scale (major)
+  'Whole Tone Minor': [2, 2, 2, 2, 2, 2], // Whole tone scale (minor)
+  'Ionian Flat 5': [2, 2, 1, 2, 1, 2, 2], // Ionian scale with lowered 5th
+  'Altered Dominant': [1, 2, 1, 2, 1, 2, 2], // Altered dominant scale
+  Japanese: [2, 2, 3, 2, 3], // Traditional Japanese pentatonic scale
+  Egyptian: [2, 2, 3, 2, 3], // Egyptian scale, similar to the Major Pentatonic
+  Enigmatic: [1, 2, 3, 2, 1, 2, 2], // A rare and mysterious scale
+  Acoustic: [2, 1, 2, 2, 2, 1, 2], // Also known as the "major locrian"
+  'Raga Hamsadhwani': [2, 1, 2, 2, 1, 3], // A traditional Indian raga
+  'Persian Major': [1, 3, 1, 2, 1, 3, 1], // Similar to the Harmonic Minor scale but with different intervals
+  'Spanish Gypsy': [1, 2, 3, 1, 2, 3, 1], // A scale used in Flamenco and Spanish music
+  Exotic: [1, 3, 1, 2, 1, 2, 2], // A mysterious scale used in some world music traditions
+  Klezmer: [2, 1, 3, 1, 1, 3, 1], // A scale commonly used in Jewish music
+  Bhairav: [1, 2, 3, 1, 2, 3, 1], // A traditional Indian raga
+  'Hungarian Minor': [2, 1, 3, 1, 2, 3, 1], // A scale with a distinct Eastern European feel
+  Bebop: [2, 1, 2, 1, 2, 1, 2, 1], // A jazz scale
+  Neapolitan: [1, 2, 2, 2, 2, 2, 1], // A minor scale with a lowered 2nd and 5th
+  'Lydian Augmented Flat 5': [2, 2, 2, 1, 1, 3, 1], // A variation of the Lydian scale with an altered 5th
+  'Maqam Rast': [2, 1, 3, 2, 1, 3, 1], // A Middle Eastern scale
+  'Maqam Bayati': [2, 1, 3, 2, 2, 2, 1], // A Middle Eastern scale
+  'Romanian Minor': [2, 1, 3, 1, 2, 3, 1] // A scale with an exotic sound often used in Balkan music
 }
