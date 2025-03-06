@@ -1,7 +1,10 @@
-/*
- * Retrospective Recording v0.1
- * Fixed timestamp handling and position calculation
- */
+/**
+ * Retrospective Recording v0.2
+ * - added support for key filtering to specific scales
+ * @version 0.2
+ * @author Polarity
+ **/
+
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
 host.defineController('Polarity', 'Retrospect', '0.1', 'bad8f3f8-3bf2-4d4d-a4fb-2a6a64b4222c', 'Polarity')
@@ -11,6 +14,7 @@ host.defineMidiPorts(1, 0)
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const booleanOption = ['No', 'Yes']
 let scaleIntervals
+let bitwigNoteInput = null
 
 // load in the external scales.js file
 load('scales.js')
@@ -36,9 +40,124 @@ if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(scaleIntervals)
 
+// hold the generated scale notes globally
+let scaleNotes = []
+let FilterKeys = null
 let currentTempo = 120
 let currentBuffer = []
 let lastMidiUpdateTime = Date.now()
+
+/**
+ * Generate notes in the scale
+ * @param {number} rootNote - Root note of the scale (0-127)
+ * @param {number[]} intervals - Array of intervals for the scale
+ * @returns {number[]} Array of note numbers in ascending order
+ */
+function generateScaleNotes (rootNote, intervals) {
+  const sumIntervals = intervals.reduce((a, b) => a + b, 0)
+  const isOctaveRepeating = sumIntervals === 12
+
+  return isOctaveRepeating
+    ? generateOctaveRepeatingScale(rootNote, intervals)
+    : generateNonOctaveRepeatingScale(rootNote, intervals)
+}
+
+/**
+ * Generate notes for octave-repeating scales (e.g., major, minor, chromatic)
+ * @param {number} rootNote - Root note of the scale (0-127)
+ * @param {number[]} intervals - Array of intervals for the scale
+ * @returns {number[]} Array of note numbers in ascending order
+ */
+function generateOctaveRepeatingScale (rootNote, intervals) {
+  // Generate scale notes within one octave
+  const octaveNotes = buildOctaveNotes(rootNote, intervals)
+
+  // Create all octave variations of these notes within MIDI range
+  return expandToAllOctaves(octaveNotes)
+}
+
+/**
+ * Generate notes for non-octave-repeating scales (e.g., whole-tone, exotic scales)
+ * @param {number} rootNote - Root note of the scale (0-127)
+ * @param {number[]} intervals - Array of intervals for the scale
+ * @returns {number[]} Array of note numbers in ascending order
+ */
+function generateNonOctaveRepeatingScale (rootNote, intervals) {
+  const notes = new Set([rootNote])
+
+  // Generate notes in both directions from root
+  generateDirectionalNotes(notes, rootNote, intervals, 'ascending')
+  generateDirectionalNotes(notes, rootNote, [...intervals].reverse(), 'descending')
+
+  return Array.from(notes).sort((a, b) => a - b)
+}
+
+/**
+ * Build base notes within one octave
+ * @param {number} rootNote - Root note of the scale (0-127)
+ * @param {number[]} intervals - Array of intervals for the scale
+ * @returns {number[]} Array of note numbers in ascending order
+ */
+function buildOctaveNotes (rootNote, intervals) {
+  const notes = [rootNote]
+  let current = rootNote
+
+  for (const interval of intervals) {
+    current += interval
+    notes.push(current)
+  }
+  return notes
+}
+
+/**
+ * Expand octave notes to all MIDI octaves
+ * @param {number[]} notes - Array of note numbers in one octave
+ * @returns {number[]} Array of note numbers in ascending order
+ */
+function expandToAllOctaves (notes) {
+  const allNotes = new Set()
+
+  for (const note of notes) {
+    const base = note % 12
+    // Calculate valid octaves for this note
+    const minOctave = Math.ceil((0 - base) / 12)
+    const maxOctave = Math.floor((127 - base) / 12)
+
+    // Add all valid octave variations
+    for (let octave = minOctave; octave <= maxOctave; octave++) {
+      const midiNote = base + octave * 12
+      if (midiNote >= 0 && midiNote <= 127) {
+        allNotes.add(midiNote)
+      }
+    }
+  }
+
+  return Array.from(allNotes).sort((a, b) => a - b)
+}
+
+/**
+ * Generate notes in one direction (ascending/descending)
+ * @param {Set<number>} notes - Set of note numbers
+ * @param {number} startNote - Starting note number
+ * @param {number[]} intervals - Array of intervals for the scale
+ * @param {string} direction - 'ascending' or 'descending'
+ * @returns {void} - adds notes to the set
+ */
+function generateDirectionalNotes (notes, startNote, intervals, direction) {
+  let current = startNote
+  let index = 0
+
+  while (true) {
+    const interval = intervals[index % intervals.length]
+    current = direction === 'ascending' ? current + interval : current - interval
+
+    // Stop when out of MIDI range
+    if (current < 0 || current > 127) break
+
+    notes.add(current)
+    index++
+  }
+}
 
 /**
  * Calculate the current buffer window in ms
@@ -58,6 +177,31 @@ function onMidi (status, data1, data2) {
   const channel = status & 0xF
   const messageType = status & 0xF0
   const now = Date.now()
+
+  // we do have all the notes of the selected scale
+  // in the scaleNotes array. So we can check if the note
+  // is in the scale or not. If not we can move to the next
+  // note in the scale.
+  if (FilterKeys && scaleNotes.length > 0) {
+    if (scaleNotes.length > 0) {
+    // if the note is not in the scale, move to the next note in the scale
+      if (!scaleNotes.includes(data1)) {
+      // find the next bigger note number in the array
+        const nextNote = scaleNotes.find(note => note > data1)
+        // if the next note is found, use it
+        if (nextNote) {
+          data1 = nextNote
+        } else {
+        // if the next note is not found, use the first note in the scale
+          data1 = scaleNotes[0]
+        }
+      }
+    }
+  }
+
+  // send notes to Bitwig note input!
+  // because we blocked the passthrough with setKeyTranslationTable()
+  bitwigNoteInput.sendRawMidiEvent(status, data1, data2)
 
   // Update buffer window
   const cutoffTime = now - getCurrentBufferWindow()
@@ -161,7 +305,11 @@ function init () {
 
   // Creates a note input that appears in the track input choosers in Bitwig Studio.
   // dont consume the events so that setMidiCallback can still receive the events
-  host.getMidiInPort(0).createNoteInput('Keyboard').setShouldConsumeEvents(false)
+  bitwigNoteInput = host.getMidiInPort(0).createNoteInput('Keyboard')
+  bitwigNoteInput.setShouldConsumeEvents(false)
+
+  // block all notes (0-127) by default (set to -1 to filter them out)
+  bitwigNoteInput.setKeyTranslationTable(Array(128).fill(-1))
 
   // Registers a callback that is called when a MIDI message is received on the MIDI input port.
   host.getMidiInPort(0).setMidiCallback(onMidi)
@@ -192,12 +340,38 @@ function init () {
     return clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
   }
 
+  // add observers to the selected key filter
+  keyFilter.addValueObserver((filter) => {
+    FilterKeys = filter === 'Yes'
+  })
+
+  // add observers to the selected scale mode
+  selectedScaleMode.addValueObserver((scaleMode) => {
+    // get root note as midi note number
+    const rootIndex = listScale.indexOf(selectedScale.get())
+    const rootNote = 60 + rootIndex
+
+    // generate scale notes based on the root note and scale intervals as an array
+    // hold it globally
+    scaleNotes = generateScaleNotes(rootNote, scaleIntervals[scaleMode])
+  })
+
+  // add observers to the selected scale and scale mode
+  selectedScale.addValueObserver((scale) => {
+    // get root note as midi note number
+    const rootIndex = listScale.indexOf(selectedScale.get())
+    const rootNote = 60 + rootIndex
+
+    // generate scale notes based on the root note and scale intervals as an array
+    // hold it globally
+    scaleNotes = generateScaleNotes(rootNote, scaleIntervals[selectedScaleMode.get()])
+  })
+
   /**
    * Signal observer to repaint the current chord progression.
    * This function is called when the user wants to repaint the current chord progression
    */
   documentState.getSignalSetting('Paint Notes', 'Retrospect', 'repaint!').addSignalObserver(() => {
-    // log('Paint Notes', currentBuffer)
     writeNotesToClip(currentBuffer, getCursorClip())
   })
 }
@@ -207,5 +381,5 @@ function log (text, obj) {
 }
 function flush () {}
 function exit () {
-  println('-- Chord Maker Bye! --')
+  println('-- Retrospective Rec Bye! --')
 }
