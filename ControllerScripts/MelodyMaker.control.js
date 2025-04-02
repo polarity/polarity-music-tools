@@ -2,7 +2,7 @@
  * Melody Maker
  * controller script for Bitwig Studio
  * Generates random melodies based on the given parameters
- * @version 0.1
+ * @version 0.2
  * @author Polarity
  */
 loadAPI(17)
@@ -59,6 +59,7 @@ function generateNoteSequence ({
   lengthInBars,
   repetitionChance,
   noteLengthVariation,
+  velocityRandomness,
   channelNumber,
   allowRepeatNotes = false
 }) {
@@ -182,7 +183,15 @@ function generateNoteSequence ({
 
     // Check if the note should be a rest
     if (Math.random() * 100 > restProbability) {
-      const velocity = 25 + Math.floor(Math.random() * 70)
+      const baseVelocity = 64 // Base velocity (default value)
+      const randomRange = 70 // Random range for velocity
+      const originalRandomVelocity = 25 + Math.floor(Math.random() * randomRange)
+      const randomnessFactor = velocityRandomness / 100 // Slider value between 0 and 1
+
+      // Calculate the new velocity based on the randomness factor
+      const calculatedVelocity = baseVelocity * (1 - randomnessFactor) + originalRandomVelocity * randomnessFactor
+      // Clamp the velocity to the range of 1 to 127
+      const velocity = Math.max(1, Math.min(127, Math.round(calculatedVelocity)))
       const pitch = calculatePitch()
 
       // Add the note to the global data
@@ -267,6 +276,7 @@ function init () {
   const restProbability = documentState.getNumberSetting('Rest Probability', 'Melody Generator', 0, 100, 0.1, '%', 0)
   const repetitionChance = documentState.getNumberSetting('Repetition', 'Melody Generator', 0, 100, 0.1, '%', 0)
   const noteLengthVariation = documentState.getNumberSetting('Note Length Variation', 'Melody Generator', 0, 100, 0.1, '%', 0)
+  const velocityRandomnessSetting = documentState.getNumberSetting('Velocity Randomness', 'Melody Generator', 0, 100, 1, '%', 100)
   const octaveStart = documentState.getNumberSetting('Octave Start', 'Melody Generator', 0, 8, 1, 'Octave', 3)
   const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
   const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
@@ -314,6 +324,7 @@ function init () {
       lengthInBars: barsToGenerate.getRaw(), // how many bars to generate (you need to adust host.createArrangerCursorClip(16, 128) also)
       repetitionChance: (repetitionChance.get() * 100), // how likely a repetition is
       noteLengthVariation: (noteLengthVariation.get() * 100), // how much the note length can vary
+      velocityRandomness: velocityRandomnessSetting.getRaw(), // how much the velocity can vary
       channelNumber: 0, // the channel number to write the notes to (midi channel)
       allowRepeatNotes: (allowRepeatNotes.get() === 'Yes') // allow repeating notes
     })
@@ -353,6 +364,7 @@ function init () {
     restProbability.setRaw(0)
     repetitionChance.setRaw(0)
     noteLengthVariation.setRaw(0)
+    velocityRandomnessSetting.setRaw(100)
     octaveStart.setRaw(3)
     octaveRange.setRaw(1)
     barsToGenerate.setRaw(1)
