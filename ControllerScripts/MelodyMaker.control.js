@@ -325,6 +325,28 @@ function generateNoteSequence ({
       // Clamp the velocity to the range of 1 to 127
       const velocity = Math.max(1, Math.min(127, Math.round(calculatedVelocity)))
 
+      // Timbre:
+      // use randomnessFactor to scale the randomness
+      // values are between -1 and 1
+      // base timbre is 0
+      const baseTimbre = 0 // Base timbre (default value)
+      const randomTimbre = Math.random() * 2 - 1
+      // Calculate the new timbre based on the randomness factor
+      const calculatedTimbre = baseTimbre * (1 - randomnessFactor) + randomTimbre * randomnessFactor
+      // Clamp the timbre to the range of -1 to 1
+      const timbre = Math.max(-1, Math.min(1, calculatedTimbre))
+
+      // Pressure:
+      // use randomnessFactor to scale the randomness
+      // values are between 0 and 1
+      // base pressure is 0
+      const basePressure = 0 // Base pressure (default value)
+      const randomPressure = Math.random() // Random pressure between 0 and 1
+      // Calculate the new pressure based on the randomness factor
+      const calculatedPressure = basePressure * (1 - randomnessFactor) + randomPressure * randomnessFactor
+      // Clamp the pressure to the range of 0 to 1
+      const pressure = Math.max(0, Math.min(1, calculatedPressure))
+
       // Pass the current position to calculatePitch for rhythmic emphasis
       const pitch = calculatePitch(currentPosition)
 
@@ -333,14 +355,18 @@ function generateNoteSequence ({
         position: currentPosition,
         pitch: pitch,
         velocity: velocity,
-        length: noteLength
+        length: noteLength,
+        pressure: pressure,
+        timbre: timbre
       })
 
       // Add the note to the history
       history.push({
         pitch: pitch,
         velocity: velocity,
-        length: noteLength
+        length: noteLength,
+        pressure: pressure,
+        timbre: timbre
       })
     }
     // Move the current position
@@ -458,6 +484,31 @@ function writeNotesToClip (notesToWrite, channelNumber, cursorClip) {
       )
     }
   })
+
+  // delay the clearing of the notes to ensure they are written to the clip
+  host.scheduleTask(() => {
+    // Clear the global note data after writing to the clip
+    modifyNotesInClip(notesToWrite, channelNumber, cursorClip)
+  }, 100) // Delay to ensure the notes are written before clearing
+}
+
+/**
+ * Change the MPE of the notes in the specified Bitwig clip.
+ * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
+ * @param {number} channelNumber - MIDI channel number to write to.
+ * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
+ */
+function modifyNotesInClip (notesToWrite, channelNumber, cursorClip) {
+  // Iterate through the notes and add them to the clip
+  notesToWrite.forEach(note => {
+    // Ensure note properties are valid before setting step
+    if (note.position !== undefined && note.pitch !== undefined && note.velocity !== undefined && note.length !== undefined) {
+      // get the noteStep object to set the length of the note
+      const step = cursorClip.getStep(channelNumber, note.position, note.pitch)
+      step.setTimbre(note.timbre)
+      step.setPressure(note.pressure)
+    }
+  })
 }
 
 /**
@@ -498,14 +549,14 @@ function init () {
   const selectedScale = documentState.getEnumSetting('Scale', 'Melody Generator', listScale, 'C')
   const restProbability = documentState.getNumberSetting('Rest Probability', 'Melody Generator', 0, 100, 0.1, '%', 0)
   const repetitionChance = documentState.getNumberSetting('Repetition', 'Melody Generator', 0, 100, 0.1, '%', 0)
+  const motifDevelopment = documentState.getNumberSetting('Motif Development', 'Melody Generator', 0, 100, 1, '%', 0)
   const noteLengthVariation = documentState.getNumberSetting('Note Length Variation', 'Melody Generator', 0, 100, 0.1, '%', 0)
-  const velocityRandomnessSetting = documentState.getNumberSetting('Velocity Randomness', 'Melody Generator', 0, 100, 1, '%', 100)
+  const velocityRandomnessSetting = documentState.getNumberSetting('Vel/Timb/Pres Rnd', 'Melody Generator', 0, 100, 1, '%', 100)
   const octaveStart = documentState.getNumberSetting('Octave Start', 'Melody Generator', 0, 8, 1, 'Octave', 3)
   const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
   const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
   const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
   const rhythmicEmphasis = documentState.getNumberSetting('Rhythmic Emphasis', 'Melody Generator', 0, 100, 1, '%', 0)
-  const motifDevelopment = documentState.getNumberSetting('Motif Development', 'Melody Generator', 0, 100, 1, '%', 0)
   const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
   const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
   const noteProb3 = documentState.getNumberSetting('3rd Probability Mediant', 'Melody Generator', 0, 100, 0.1, '%', 10)
@@ -639,6 +690,10 @@ function init () {
     noteProb7.setRaw(5)
     host.showPopupNotification('Values reset to defaults')
   })
+}
+
+function log (text, obj) {
+  println(text + ' : ' + JSON.stringify(obj), 2)
 }
 
 function flush () {
