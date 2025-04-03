@@ -4,6 +4,10 @@
  * Generates random melodies based on the given parameters
  * @version 0.3
  * @author Polarity
+ * @todo: increase weight of the tonic (1st note) on important rhythmical positions
+ * @todo: add a way to limit interval jumps
+ * @todo: melody contour shape (up, down, up-down, down-up, random, legacy)
+ * @todo: motive development (repeat, invert, retrograde, etc.)
  */
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
@@ -61,7 +65,8 @@ function generateNoteSequence ({
   noteLengthVariation,
   velocityRandomness,
   channelNumber,
-  allowRepeatNotes = false
+  allowRepeatNotes = false,
+  rhythmicEmphasis = 0
 }) {
   // Reset global data
   globalNoteData = []
@@ -102,10 +107,45 @@ function generateNoteSequence ({
   /**
    * Calculate the pitch value based on the given probability and scale mode
    * Also handles the octave range and note repetition
+   * @param {number} position - Current position in 16th notes
    * @returns {number} - pitch value between 0 and 127
    */
-  const calculatePitch = () => {
-    const degreeIndex = weightedRandom(probability.map(p => p / 100))
+  const calculatePitch = (position) => {
+    // Create a copy of the probabilities so we can modify them
+    const adjustedProbability = [...probability]
+
+    // Check if current position is a rhythmically important position (1st beat of bar or every 4th 16th note)
+    const isImportantBeat = position % 4 === 0
+
+    // If this is an important beat and rhythmic emphasis is enabled, adjust probabilities
+    if (isImportantBeat && rhythmicEmphasis > 0) {
+      // Find the tonic, fifth, and fourth scale degrees
+      const tonicIndex = 0 // First scale degree (tonic) is always index 0
+
+      // Find the fifth (typically index 4 in diatonic scales) and fourth (typically index 3)
+      let fifthIndex = -1
+      let fourthIndex = -1
+
+      // Get the scale semitones
+      const scaleNotes = SCALE_MODES[scaleMode]
+
+      // Find fifth (7 semitones from tonic) and fourth (5 semitones from tonic)
+      for (let i = 0; i < scaleNotes.length; i++) {
+        if (scaleNotes[i] === 7) fifthIndex = i
+        if (scaleNotes[i] === 5) fourthIndex = i
+      }
+
+      // Calculate emphasis factor (0-1)
+      const emphasisFactor = rhythmicEmphasis / 100
+
+      // Adjust probabilities - increase tonic, fifth, and fourth
+      if (tonicIndex >= 0) adjustedProbability[tonicIndex] += 50 * emphasisFactor
+      if (fifthIndex >= 0) adjustedProbability[fifthIndex] += 30 * emphasisFactor
+      if (fourthIndex >= 0) adjustedProbability[fourthIndex] += 20 * emphasisFactor
+    }
+
+    // Use the adjusted probabilities for note selection
+    const degreeIndex = weightedRandom(adjustedProbability.map(p => p / 100))
     const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
     const octaveOffset = Math.floor(Math.random() * octaveRange)
     let pitch = baseNote + interval + (12 * octaveOffset)
@@ -192,7 +232,9 @@ function generateNoteSequence ({
       const calculatedVelocity = baseVelocity * (1 - randomnessFactor) + originalRandomVelocity * randomnessFactor
       // Clamp the velocity to the range of 1 to 127
       const velocity = Math.max(1, Math.min(127, Math.round(calculatedVelocity)))
-      const pitch = calculatePitch()
+
+      // Pass the current position to calculatePitch for rhythmic emphasis
+      const pitch = calculatePitch(currentPosition)
 
       // Add the note to the global data
       globalNoteData.push({
@@ -370,6 +412,7 @@ function init () {
   const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
   const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
   const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
+  const rhythmicEmphasis = documentState.getNumberSetting('Rhythmic Emphasis', 'Melody Generator', 0, 100, 1, '%', 0)
   const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
   const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
   const noteProb3 = documentState.getNumberSetting('3rd Probability Mediant', 'Melody Generator', 0, 100, 0.1, '%', 10)
@@ -422,7 +465,8 @@ function init () {
       noteLengthVariation: (noteLengthVariation.get() * 100), // how much the note length can vary
       velocityRandomness: velocityRandomnessSetting.getRaw(), // how much the velocity can vary
       channelNumber: 0, // the channel number to write the notes to (midi channel)
-      allowRepeatNotes: (allowRepeatNotes.get() === 'Yes') // allow repeating notes
+      allowRepeatNotes: (allowRepeatNotes.get() === 'Yes'), // allow repeating notes
+      rhythmicEmphasis: rhythmicEmphasis.getRaw() // Pass the rhythmic emphasis parameter
     })
   }
 
@@ -490,6 +534,7 @@ function init () {
     octaveStart.setRaw(3)
     octaveRange.setRaw(1)
     barsToGenerate.setRaw(1)
+    rhythmicEmphasis.setRaw(0) // Reset the new parameter
     noteProb1.setRaw(30)
     noteProb2.setRaw(10)
     noteProb3.setRaw(10)
