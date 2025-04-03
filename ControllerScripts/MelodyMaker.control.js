@@ -2,12 +2,12 @@
  * Melody Maker
  * controller script for Bitwig Studio
  * Generates random melodies based on the given parameters
- * @version 0.3
+ * @version 0.4
  * @author Polarity
  */
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
-host.defineController('Polarity', 'Melody Maker', '0.3', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
+host.defineController('Polarity', 'Melody Maker', '0.4', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
 
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -62,7 +62,8 @@ function generateNoteSequence ({
   velocityRandomness,
   channelNumber,
   allowRepeatNotes = false,
-  rhythmicEmphasis = 0
+  rhythmicEmphasis = 0,
+  motifDevelopment = 0
 }) {
   // Reset global data
   globalNoteData = []
@@ -78,6 +79,56 @@ function generateNoteSequence ({
     const sum = weights.reduce((a, b) => a + b, 0)
     let rand = Math.random() * sum
     return weights.findIndex(w => (rand -= w) < 0)
+  }
+
+  /**
+   * Transform a motif in various ways to create musical development
+   * @param {Array} motif - Array of note objects to transform
+   * @returns {Array} - Transformed motif
+   */
+  const transformMotif = (motif) => {
+    // Choose a transformation type (0: transpose, 1: invert, 2: retrograde/reverse, 3: octave shift)
+    const transformationType = Math.floor(Math.random() * 4)
+
+    // Create a deep copy of the motif to avoid modifying the original
+    const transformedMotif = JSON.parse(JSON.stringify(motif))
+
+    switch (transformationType) {
+      case 0: // Transpose
+        // Shift all notes up or down by a scale step (2-3 semitones)
+        const transposeInterval = Math.floor(Math.random() * 5) - 2 // -2 to +2 steps
+        for (const note of transformedMotif) {
+          note.pitch = Math.min(127, Math.max(0, note.pitch + transposeInterval))
+        }
+        break
+
+      case 1: // Invert
+        // Invert the melodic contour around the first note
+        if (transformedMotif.length > 1) {
+          const pivotPitch = transformedMotif[0].pitch
+          for (let i = 1; i < transformedMotif.length; i++) {
+            // Calculate distance from pivot and invert
+            const distance = transformedMotif[i].pitch - pivotPitch
+            transformedMotif[i].pitch = Math.min(127, Math.max(0, pivotPitch - distance))
+          }
+        }
+        break
+
+      case 2: // Retrograde (reverse)
+        // Play the motif backwards (reverse the array)
+        transformedMotif.reverse()
+        break
+
+      case 3: // Octave shift
+        // Move the whole motif up or down an octave
+        const octaveShift = Math.random() < 0.5 ? 12 : -12
+        for (const note of transformedMotif) {
+          note.pitch = Math.min(127, Math.max(0, note.pitch + octaveShift))
+        }
+        break
+    }
+
+    return transformedMotif
   }
 
   /**
@@ -173,12 +224,57 @@ function generateNoteSequence ({
   // Initializations
   const totalSteps = lengthInBars * 16
   let currentPosition = 0
+
+  // Store the generated notes in a global variable
+  // to store the last 8 notes to be able to repeat them
+  // this is used for the repetition chance
   const history = []
 
   // Main loop
   // Generate notes until the total steps are reached
   // or the history is empty
   while (currentPosition < totalSteps) {
+    // Check if we should use motif development
+    if (history.length > 2 && Math.random() * 100 < motifDevelopment) {
+      // Extract a motif (3-5 notes) from history
+      const motifLength = Math.min(history.length, Math.floor(Math.random() * 3) + 3)
+      const motif = history.slice(-motifLength)
+
+      // Transform the motif to create development
+      const transformedMotif = transformMotif(motif)
+
+      // Use the transformed motif
+      for (const note of transformedMotif) {
+        // Check if the note fits in the remaining steps
+        if (currentPosition >= totalSteps) break
+        const stepsNeeded = (note.length / 0.25)
+
+        // Check if this note should be a rest
+        if (Math.random() * 100 > restProbability) {
+          // Add the transformed note to the global data
+          globalNoteData.push({
+            position: currentPosition,
+            pitch: note.pitch,
+            velocity: note.velocity,
+            length: note.length
+          })
+
+          // Also add to history for potential future development
+          history.push({
+            pitch: note.pitch,
+            velocity: note.velocity,
+            length: note.length
+          })
+        }
+
+        // Move the current position
+        currentPosition += stepsNeeded
+      }
+
+      // After using motif, continue to next iteration
+      continue
+    }
+
     // Handle repetitions
     if (history.length > 1 && Math.random() * 100 < repetitionChance) {
       const repeatLength = Math.min(history.length, Math.floor(Math.random() * 4) + 1)
@@ -409,6 +505,7 @@ function init () {
   const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
   const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
   const rhythmicEmphasis = documentState.getNumberSetting('Rhythmic Emphasis', 'Melody Generator', 0, 100, 1, '%', 0)
+  const motifDevelopment = documentState.getNumberSetting('Motif Development', 'Melody Generator', 0, 100, 1, '%', 0)
   const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
   const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
   const noteProb3 = documentState.getNumberSetting('3rd Probability Mediant', 'Melody Generator', 0, 100, 0.1, '%', 10)
@@ -462,7 +559,8 @@ function init () {
       velocityRandomness: velocityRandomnessSetting.getRaw(), // how much the velocity can vary
       channelNumber: 0, // the channel number to write the notes to (midi channel)
       allowRepeatNotes: (allowRepeatNotes.get() === 'Yes'), // allow repeating notes
-      rhythmicEmphasis: rhythmicEmphasis.getRaw() // Pass the rhythmic emphasis parameter
+      rhythmicEmphasis: rhythmicEmphasis.getRaw(), // Pass the rhythmic emphasis parameter
+      motifDevelopment: motifDevelopment.getRaw() // Pass the motif development parameter
     })
   }
 
@@ -531,6 +629,7 @@ function init () {
     octaveRange.setRaw(1)
     barsToGenerate.setRaw(1)
     rhythmicEmphasis.setRaw(0) // Reset the new parameter
+    motifDevelopment.setRaw(0) // Reset the new motif development parameter
     noteProb1.setRaw(30)
     noteProb2.setRaw(10)
     noteProb3.setRaw(10)
