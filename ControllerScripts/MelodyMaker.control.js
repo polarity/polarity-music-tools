@@ -2,12 +2,12 @@
  * Melody Maker
  * controller script for Bitwig Studio
  * Generates random melodies based on the given parameters
- * @version 0.4
+ * @version 0.4.1
  * @author Polarity
  */
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
-host.defineController('Polarity', 'Melody Maker', '0.4', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
+host.defineController('Polarity', 'Melody Maker', '0.4.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
 
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -60,13 +60,16 @@ function generateNoteSequence ({
   repetitionChance,
   noteLengthVariation,
   velocityRandomness,
-  channelNumber,
   allowRepeatNotes = false,
   rhythmicEmphasis = 0,
-  motifDevelopment = 0
+  motifDevelopment = 0,
+  countChannels = false
 }) {
   // Reset global data
   globalNoteData = []
+
+  // Channel number for MIDI output
+  let channelNumber = 0
 
   // Calculate the base note value based on the scale and octave
   const baseNote = (scale - 1) + (octaveStart + 1) * 12
@@ -253,17 +256,25 @@ function generateNoteSequence ({
         if (Math.random() * 100 > restProbability) {
           // Add the transformed note to the global data
           globalNoteData.push({
+            channel: channelNumber,
             position: currentPosition,
             pitch: note.pitch,
             velocity: note.velocity,
-            length: note.length
+            length: note.length,
+            releaseVelocity: note.releaseVelocity,
+            pressure: note.pressure,
+            timbre: note.timbre
           })
 
           // Also add to history for potential future development
           history.push({
+            channel: channelNumber,
             pitch: note.pitch,
             velocity: note.velocity,
-            length: note.length
+            length: note.length,
+            releaseVelocity: note.releaseVelocity,
+            pressure: note.pressure,
+            timbre: note.timbre
           })
         }
 
@@ -290,10 +301,14 @@ function generateNoteSequence ({
         if (Math.random() * 100 > restProbability) {
           // Add the repeated note to the global data
           globalNoteData.push({
+            channel: channelNumber,
             position: currentPosition,
             pitch: note.pitch,
             velocity: note.velocity,
-            length: note.length
+            length: note.length,
+            releaseVelocity: note.releaseVelocity,
+            pressure: note.pressure,
+            timbre: note.timbre
           })
         }
 
@@ -325,6 +340,17 @@ function generateNoteSequence ({
       // Clamp the velocity to the range of 1 to 127
       const velocity = Math.max(1, Math.min(127, Math.round(calculatedVelocity)))
 
+      // Release Velocity:
+      // use randomnessFactor to scale the randomness
+      // values are between 0 and 1
+      // base pressure is 0
+      const baseRVel = 0 // Base pressure (default value)
+      const randomRVel = Math.random() // Random pressure between 0 and 1
+      // Calculate the new pressure based on the randomness factor
+      const calculatedRvel = baseRVel * (1 - randomnessFactor) + randomRVel * randomnessFactor
+      // Clamp the pressure to the range of 0 to 1
+      const releaseVelocity = Math.max(0, Math.min(1, calculatedRvel))
+
       // Timbre:
       // use randomnessFactor to scale the randomness
       // values are between -1 and 1
@@ -352,9 +378,11 @@ function generateNoteSequence ({
 
       // Add the note to the global data
       globalNoteData.push({
+        channel: channelNumber,
         position: currentPosition,
         pitch: pitch,
         velocity: velocity,
+        releaseVelocity: releaseVelocity,
         length: noteLength,
         pressure: pressure,
         timbre: timbre
@@ -362,15 +390,29 @@ function generateNoteSequence ({
 
       // Add the note to the history
       history.push({
+        channel: channelNumber,
         pitch: pitch,
         velocity: velocity,
+        releaseVelocity: releaseVelocity,
         length: noteLength,
         pressure: pressure,
         timbre: timbre
       })
     }
+
     // Move the current position
     currentPosition += stepsNeeded
+
+    // Check if the note channel is based on a counter
+    // if so, count the channels from 0 to 15 and then start over
+    // if not, use the channelNumber 0
+    if (countChannels) {
+      if (channelNumber >= 15) {
+        channelNumber = 0
+      } else {
+        channelNumber++
+      }
+    }
 
     // Remove the oldest note from the history
     if (history.length > 8) history.shift()
@@ -467,16 +509,15 @@ function generateAlternativeMelody (originalNotes, scaleMode, scaleKey, changePr
 /**
  * Write an array of notes to the specified Bitwig clip.
  * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
- * @param {number} channelNumber - MIDI channel number to write to.
  * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
  */
-function writeNotesToClip (notesToWrite, channelNumber, cursorClip) {
+function writeNotesToClip (notesToWrite, cursorClip) {
   // Iterate through the notes and add them to the clip
   notesToWrite.forEach(note => {
     // Ensure note properties are valid before setting step
     if (note.position !== undefined && note.pitch !== undefined && note.velocity !== undefined && note.length !== undefined) {
       cursorClip.setStep(
-        channelNumber, // MIDI Channel
+        note.channel, // MIDI Channel
         note.position, // Start time in 16th steps
         note.pitch, // MIDI pitch (0-127)
         note.velocity, // Velocity (1-127)
@@ -488,25 +529,27 @@ function writeNotesToClip (notesToWrite, channelNumber, cursorClip) {
   // delay the clearing of the notes to ensure they are written to the clip
   host.scheduleTask(() => {
     // Clear the global note data after writing to the clip
-    modifyNotesInClip(notesToWrite, channelNumber, cursorClip)
+    modifyNotesInClip(notesToWrite, cursorClip)
   }, 100) // Delay to ensure the notes are written before clearing
 }
 
 /**
  * Change the MPE of the notes in the specified Bitwig clip.
  * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
- * @param {number} channelNumber - MIDI channel number to write to.
  * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
  */
-function modifyNotesInClip (notesToWrite, channelNumber, cursorClip) {
+function modifyNotesInClip (notesToWrite, cursorClip) {
   // Iterate through the notes and add them to the clip
   notesToWrite.forEach(note => {
     // Ensure note properties are valid before setting step
     if (note.position !== undefined && note.pitch !== undefined && note.velocity !== undefined && note.length !== undefined) {
       // get the noteStep object to set the length of the note
-      const step = cursorClip.getStep(channelNumber, note.position, note.pitch)
+      // @bug: getStep() does return the right notesteps but channel is always 0
+      const step = cursorClip.getStep(note.channel, note.position, note.pitch)
+      // this fails when ch is not 0
       step.setTimbre(note.timbre)
       step.setPressure(note.pressure)
+      step.setReleaseVelocity(note.releaseVelocity)
     }
   })
 }
@@ -556,6 +599,7 @@ function init () {
   const octaveRange = documentState.getNumberSetting('Octave Range', 'Melody Generator', 1, 4, 1, 'Octaves', 1)
   const barsToGenerate = documentState.getNumberSetting('How Many Bars?', 'Melody Generator', 1, 8, 1, 'Bar(s)', 1)
   const allowRepeatNotes = documentState.getEnumSetting('Allow Repeating Notes', 'Melody Generator', ['Yes', 'No'], 'No')
+  const countChannels = documentState.getEnumSetting('Note Channel Count', 'Melody Generator', ['Yes', 'No'], 'No')
   const rhythmicEmphasis = documentState.getNumberSetting('Rhythmic Emphasis', 'Melody Generator', 0, 100, 1, '%', 0)
   const noteProb1 = documentState.getNumberSetting('1rd Probability Tonic', 'Melody Generator', 0, 100, 0.1, '%', 30)
   const noteProb2 = documentState.getNumberSetting('2nd Probability Supertonic', 'Melody Generator', 0, 100, 0.1, '%', 10)
@@ -611,7 +655,8 @@ function init () {
       channelNumber: 0, // the channel number to write the notes to (midi channel)
       allowRepeatNotes: (allowRepeatNotes.get() === 'Yes'), // allow repeating notes
       rhythmicEmphasis: rhythmicEmphasis.getRaw(), // Pass the rhythmic emphasis parameter
-      motifDevelopment: motifDevelopment.getRaw() // Pass the motif development parameter
+      motifDevelopment: motifDevelopment.getRaw(), // Pass the motif development parameter
+      countChannels: (countChannels.get() === 'Yes') // count the channels from 1 to 16
     })
   }
 
@@ -627,7 +672,7 @@ function init () {
     // generate new notes
     generate()
     // write the generated notes to the clip
-    writeNotesToClip(globalNoteData, 0, getCursorClip())
+    writeNotesToClip(globalNoteData, getCursorClip())
   })
 
   // define the repaint button
@@ -635,7 +680,7 @@ function init () {
     // clear all notes from the clip
     getCursorClip().clearSteps()
     // write the generated notes to the clip
-    writeNotesToClip(globalNoteData, 0, getCursorClip())
+    writeNotesToClip(globalNoteData, getCursorClip())
   })
 
   // Alternative 1 Button: Generates variation of the last generated melody
@@ -661,7 +706,7 @@ function init () {
     const clip = getCursorClip()
     clip.clearSteps() // Clear the clip before writing the variation
     // Uses modified writeNotesToClip:
-    writeNotesToClip(alternativeNotes, 0, clip) // Write the alternative notes
+    writeNotesToClip(alternativeNotes, clip) // Write the alternative notes
   })
 
   // Added "Init Values" button to reset parameters thx @Terranoise
