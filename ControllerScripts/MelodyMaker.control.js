@@ -4,10 +4,6 @@
  * Generates random melodies based on the given parameters
  * @version 0.3
  * @author Polarity
- * @todo: increase weight of the tonic (1st note) on important rhythmical positions
- * @todo: add a way to limit interval jumps
- * @todo: melody contour shape (up, down, up-down, down-up, random, legacy)
- * @todo: motive development (repeat, invert, retrograde, etc.)
  */
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
