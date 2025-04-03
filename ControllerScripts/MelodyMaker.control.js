@@ -2,12 +2,12 @@
  * Melody Maker
  * controller script for Bitwig Studio
  * Generates random melodies based on the given parameters
- * @version 0.2
+ * @version 0.3
  * @author Polarity
  */
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
-host.defineController('Polarity', 'Melody Maker', '0.1', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
+host.defineController('Polarity', 'Melody Maker', '0.3', '1f73b4d7-0cfe-49e6-bf70-f7191bdb3a24', 'Polarity')
 
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -221,19 +221,108 @@ function generateNoteSequence ({
 }
 
 /**
- * Write the generated notes to the cursor clip
- * @param {*} channelNumber - channel number of the note
- * @param {*} cursorClip - cursor clip to write the notes to
+ * Generates a variation of a given melody by changing some notes
+ * to adjacent notes within the specified scale.
+ * @param {Array} originalNotes - The original array of note objects.
+ * @param {string} scaleMode - The name of the scale mode (e.g., 'Major').
+ * @param {string} scaleKey - The root note of the scale (e.g., 'C').
+ * @param {number} changeProbability - Probability (0-1) of changing any given note.
+ * @returns {Array} - A new array of note objects representing the variation.
  */
-function writeNotesToClip (channelNumber, cursorClip) {
-  globalNoteData.forEach(note => {
-    cursorClip.setStep(
-      channelNumber,
-      note.position,
-      note.pitch,
-      note.velocity,
-      note.length
-    )
+function generateAlternativeMelody (originalNotes, scaleMode, scaleKey, changeProbability = 0.25) {
+  const scaleSemitones = SCALE_MODES[scaleMode]
+  const scaleKeyIndex = listScale.indexOf(scaleKey) // 0 for C, 1 for C#, etc.
+  const alternativeNotes = []
+
+  // Validate scale data
+  if (!scaleSemitones || scaleSemitones.length === 0) {
+    println('Error in generateAlternativeMelody: Scale mode not found or empty: ' + scaleMode)
+    return originalNotes // Return original if scale is invalid
+  }
+
+  // Iterate through each note of the original melody
+  for (const note of originalNotes) {
+    // Decide randomly whether to change this note
+    if (Math.random() < changeProbability && scaleSemitones.length > 1) {
+      // Find the scale degree index of the current note
+      // Calculate the note's semitone value relative to the scale's root note (0-11)
+      const noteSemitoneRelativeToKey = (note.pitch - scaleKeyIndex + 120) % 12 // Use +120 to handle negative results correctly
+      let currentDegreeIndex = -1
+      let minDiff = Infinity
+
+      // Find the closest degree in the scale definition (semitones array)
+      for (let i = 0; i < scaleSemitones.length; i++) {
+        let diff = Math.abs(noteSemitoneRelativeToKey - scaleSemitones[i])
+        diff = Math.min(diff, 12 - diff) // Account for wrap-around distance (e.g., diff between 11 and 0 is 1)
+        if (diff < minDiff) {
+          minDiff = diff
+          currentDegreeIndex = i
+        }
+      }
+
+      // If no matching degree found (shouldn't happen with generated notes), keep original
+      if (currentDegreeIndex === -1) {
+        alternativeNotes.push(note)
+        continue
+      }
+
+      // Choose a new scale degree (adjacent) ---
+      const offset = (Math.random() < 0.5) ? -1 : 1 // Move one step up or down the scale degrees
+      // Calculate the new index, wrapping around the scale size
+      const newDegreeIndex = (currentDegreeIndex + offset + scaleSemitones.length) % scaleSemitones.length
+
+      // Calculate the new pitch
+      const newSemitoneOffset = scaleSemitones[newDegreeIndex] // Semitone offset from the key root for the new degree
+      const originalOctave = Math.floor(note.pitch / 12) // Get the octave of the original note
+
+      // Calculate the potential new pitch: start with the key in the original octave, then add the new scale degree offset
+      let newPitch = (originalOctave * 12) + scaleKeyIndex + newSemitoneOffset
+
+      // Adjust octave to keep the new note close to the original
+      // Calculate pitch differences with potential octave shifts
+      const pitchDiffSameOctave = newPitch - note.pitch
+      const pitchDiffOctaveUp = (newPitch + 12) - note.pitch
+      const pitchDiffOctaveDown = (newPitch - 12) - note.pitch
+
+      // Choose the octave that results in the smallest absolute pitch change
+      if (Math.abs(pitchDiffOctaveUp) < Math.abs(pitchDiffSameOctave) && (newPitch + 12) <= 127) {
+        newPitch += 12
+      } else if (Math.abs(pitchDiffOctaveDown) < Math.abs(pitchDiffSameOctave) && (newPitch - 12) >= 0) {
+        newPitch -= 12
+      }
+
+      // Clamp the final pitch to the valid MIDI range (0-127)
+      newPitch = Math.max(0, Math.min(127, newPitch))
+
+      // Add the modified note (keeping original position, velocity, length)
+      alternativeNotes.push({ ...note, pitch: newPitch })
+    } else {
+      // Keep the original note if not changing it
+      alternativeNotes.push(note)
+    }
+  }
+  return alternativeNotes // Return the array with potentially modified notes
+}
+
+/**
+ * Write an array of notes to the specified Bitwig clip.
+ * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
+ * @param {number} channelNumber - MIDI channel number to write to.
+ * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
+ */
+function writeNotesToClip (notesToWrite, channelNumber, cursorClip) {
+  // Iterate through the notes and add them to the clip
+  notesToWrite.forEach(note => {
+    // Ensure note properties are valid before setting step
+    if (note.position !== undefined && note.pitch !== undefined && note.velocity !== undefined && note.length !== undefined) {
+      cursorClip.setStep(
+        channelNumber, // MIDI Channel
+        note.position, // Start time in 16th steps
+        note.pitch, // MIDI pitch (0-127)
+        note.velocity, // Velocity (1-127)
+        note.length // Duration in beats
+      )
+    }
   })
 }
 
@@ -295,7 +384,14 @@ function init () {
    * @returns {CursorClip} - the cursor clip based on the selected clip type
    */
   function getCursorClip () {
-    return clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
+    const clip = clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
+    // Heh! this is better, because it makes the clip length the same as the clip length in the UI
+    // Set the loop length of the clip based on the barsToGenerate setting
+    // Loop length is in beats. 1 bar = 4 beats.
+    const loopLengthBeats = barsToGenerate.getRaw() * 4.0
+    clip.getLoopLength().setRaw(loopLengthBeats)
+    clip.getPlayStop().setRaw(loopLengthBeats)
+    return clip
   }
 
   /**
@@ -336,21 +432,47 @@ function init () {
   })
 
   // define the generate button for the Arranger
-  documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate!').addSignalObserver(() => {
+  documentState.getSignalSetting('Generate!!', 'Melody Generator', 'Generate New Sequence').addSignalObserver(() => {
     // clear all notes from the clip
     getCursorClip().clearSteps()
     // generate new notes
     generate()
     // write the generated notes to the clip
-    writeNotesToClip(0, getCursorClip())
+    writeNotesToClip(globalNoteData, 0, getCursorClip())
   })
 
   // define the repaint button
-  documentState.getSignalSetting('Repaint', 'Melody Generator', 'Repaint!').addSignalObserver(() => {
+  documentState.getSignalSetting('Repaint', 'Melody Generator', 'Repaint Sequence!').addSignalObserver(() => {
     // clear all notes from the clip
     getCursorClip().clearSteps()
     // write the generated notes to the clip
-    writeNotesToClip(0, getCursorClip())
+    writeNotesToClip(globalNoteData, 0, getCursorClip())
+  })
+
+  // Alternative 1 Button: Generates variation of the last generated melody
+  documentState.getSignalSetting('Alternative 1', 'Melody Generator', 'Generate Alternative').addSignalObserver(() => {
+    // Check if a base melody exists in globalNoteData
+    if (globalNoteData.length === 0) {
+      return // Do nothing if no base melody exists
+    }
+
+    // Get current scale settings needed for variation logic
+    const currentScaleMode = selectedScaleMode.get()
+    const currentScaleKey = selectedScale.get()
+    const changeProb = 0.25 // 25% chance to change each note (can be adjusted)
+
+    // Generate the alternative melody based on the current globalNoteData
+    const alternativeNotes = generateAlternativeMelody(
+      globalNoteData,
+      currentScaleMode,
+      currentScaleKey,
+      changeProb
+    )
+
+    const clip = getCursorClip()
+    clip.clearSteps() // Clear the clip before writing the variation
+    // Uses modified writeNotesToClip:
+    writeNotesToClip(alternativeNotes, 0, clip) // Write the alternative notes
   })
 
   // Added "Init Values" button to reset parameters thx @Terranoise
