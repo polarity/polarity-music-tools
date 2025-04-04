@@ -44,6 +44,278 @@ const listScaleMode = Object.keys(SCALE_MODES)
 let globalNoteData = []
 
 /**
+ * Calculate the pitch value based on the given probability and scale mode
+ * Also handles the octave range and note repetition
+ * refactoring of the original code, moved outside of generateNoteSequence()
+ * @param {number} position - Current position in 16th notes
+ * @param {array} recentPitches - Array of recently used pitches to avoid repetition
+ * @returns {number} - pitch value between 0 and 127
+ */
+const calculatePitch = (position, probability, rhythmicEmphasis, scaleMode, octaveRange, weightedRandom, allowRepeatNotes, baseNote, recentPitches = []) => {
+  // Create a copy of the probabilities so we can modify them
+  const adjustedProbability = [...probability]
+
+  // Check if current position is a rhythmically important position (1st beat of bar or every 4th 16th note)
+  const isImportantBeat = position % 4 === 0
+
+  // If this is an important beat and rhythmic emphasis is enabled, adjust probabilities
+  if (isImportantBeat && rhythmicEmphasis > 0) {
+    // Find the tonic, fifth, and fourth scale degrees
+    const tonicIndex = 0 // First scale degree (tonic) is always index 0
+
+    // Find the fifth (typically index 4 in diatonic scales) and fourth (typically index 3)
+    let fifthIndex = -1
+    let fourthIndex = -1
+
+    // Get the scale semitones
+    const scaleNotes = SCALE_MODES[scaleMode]
+
+    // Find fifth (7 semitones from tonic) and fourth (5 semitones from tonic)
+    for (let i = 0; i < scaleNotes.length; i++) {
+      if (scaleNotes[i] === 7) fifthIndex = i
+      if (scaleNotes[i] === 5) fourthIndex = i
+    }
+
+    // Calculate emphasis factor (0-1)
+    const emphasisFactor = rhythmicEmphasis / 100
+
+    // Adjust probabilities - increase tonic, fifth, and fourth
+    if (tonicIndex >= 0) adjustedProbability[tonicIndex] += 50 * emphasisFactor
+    if (fifthIndex >= 0) adjustedProbability[fifthIndex] += 30 * emphasisFactor
+    if (fourthIndex >= 0) adjustedProbability[fourthIndex] += 20 * emphasisFactor
+  }
+
+  // Use the adjusted probabilities for note selection
+  // Try multiple times to find a pitch that's not too repetitive
+  let pitch = null
+  let attempts = 0
+  const maxAttempts = 10 // Limit attempts to prevent infinite loops
+
+  // If we're explicitly allowing repeat notes, we'll skip the repetition avoidance
+  if (allowRepeatNotes) {
+    // Use standard note selection
+    const degreeIndex = weightedRandom(adjustedProbability.map(p => p / 100))
+    const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
+    const octaveOffset = Math.floor(Math.random() * octaveRange)
+    pitch = baseNote + interval + (12 * octaveOffset)
+  } else {
+    // Try to find a non-repeating pitch
+    while (attempts < maxAttempts) {
+      const degreeIndex = weightedRandom(adjustedProbability.map(p => p / 100))
+      const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
+      const octaveOffset = Math.floor(Math.random() * octaveRange)
+      const candidatePitch = baseNote + interval + (12 * octaveOffset)
+
+      // Check if this pitch is too similar to recent pitches
+      // Get the last pitch (if any) from the recentPitches array
+      const lastPitch = recentPitches.length > 0 ? recentPitches[recentPitches.length - 1] : null
+      const isTooSimilar = lastPitch === candidatePitch ||
+                           recentPitches.includes(candidatePitch)
+
+      if (!isTooSimilar) {
+        pitch = candidatePitch
+        break
+      }
+
+      // Increase weights for unused notes to favor diversity
+      if (attempts > 3) {
+        // After a few tries, start boosting other scale degrees
+        for (let i = 0; i < adjustedProbability.length; i++) {
+          if (i !== degreeIndex) {
+            adjustedProbability[i] *= 1.2 // Boost other scale degrees
+          }
+        }
+      }
+
+      attempts++
+    }
+
+    // If all attempts failed, just pick one
+    if (pitch === null) {
+      const degreeIndex = weightedRandom(adjustedProbability.map(p => p / 100))
+      const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
+      const octaveOffset = Math.floor(Math.random() * octaveRange)
+      pitch = baseNote + interval + (12 * octaveOffset)
+    }
+  }
+
+  // If we still end up with the same pitch as the last one (despite our attempts)
+  // and we're not allowing repeats, try alternative notes
+  if (!allowRepeatNotes && recentPitches.length > 0 && recentPitches[recentPitches.length - 1] === pitch) {
+    const alternatives = [
+      pitch + 7, // Perfect Fifth
+      pitch - 7,
+      pitch + 5, // Perfect Fourth
+      pitch - 5,
+      pitch + 12, // Octave up
+      pitch - 12 // Octave down
+    ].filter(p => p >= 0 && p <= 127 && !recentPitches.includes(p))
+
+    // Pick a random alternative if available
+    if (alternatives.length > 0) {
+      pitch = alternatives[Math.floor(Math.random() * alternatives.length)]
+    }
+  }
+
+  // Return the pitch value clamped between 0 and 127
+  return Math.min(127, Math.max(0, pitch))
+}
+
+/**
+ * Transform a motif in various ways to create musical development
+ * @param {Array} motif - Array of note objects to transform
+ * @param {number} baseNote - Base note for the selected scale/octave
+ * @param {number} octaveStart - Starting octave
+ * @param {number} octaveRange - Range of octaves to use
+ * @param {string} scaleMode - Selected scale mode
+ * @returns {Array} - Transformed motif
+ */
+const transformMotif = (motif, baseNote, octaveStart, octaveRange, scaleMode) => {
+  // Define octave boundaries for consistent enforcement
+  const minOctave = octaveStart
+  const maxOctave = octaveStart + octaveRange - 1
+  const minPitch = (minOctave + 1) * 12
+  const maxPitch = (maxOctave + 2) * 12 - 1
+
+  // Get the scale steps for ensuring scale compliance
+  const scaleSteps = SCALE_MODES[scaleMode]
+
+  /**
+   * Ensures a pitch stays within octave range and within scale
+   * @param {number} pitch - MIDI pitch to constrain
+   * @returns {number} - Scale-compliant pitch within range
+   */
+  const constrainPitch = (pitch) => {
+    // First, constrain to octave range
+    let constrained = pitch
+
+    // If pitch is too low, shift up by octaves
+    while (constrained < minPitch) constrained += 12
+
+    // If pitch is too high, shift down by octaves
+    while (constrained > maxPitch) constrained -= 12
+
+    // Now ensure the note is in the scale
+    // Calculate the pitch class (0-11) relative to the key
+    const rootNote = baseNote % 12
+    const pitchClass = (constrained - rootNote + 12000) % 12
+
+    // Find the closest scale step
+    let bestStep = null
+    let smallestDistance = Infinity
+
+    for (const step of scaleSteps) {
+      const distance = Math.min(
+        Math.abs(pitchClass - step),
+        Math.abs(pitchClass - (step + 12))
+      )
+
+      if (distance < smallestDistance) {
+        smallestDistance = distance
+        bestStep = step
+      }
+    }
+
+    // Adjust the pitch to the closest scale step
+    if (bestStep !== null) {
+      const correction = bestStep - pitchClass
+      constrained += correction
+
+      // Ensure we're still in range after scale correction
+      if (constrained < minPitch) constrained += 12
+      if (constrained > maxPitch) constrained -= 12
+    }
+
+    return constrained
+  }
+
+  // Choose a transformation type (0: transpose, 1: invert, 2: retrograde/reverse, 3: octave shift)
+  const transformationType = Math.floor(Math.random() * 4)
+
+  // Create a deep copy of the motif to avoid modifying the original
+  const transformedMotif = JSON.parse(JSON.stringify(motif))
+
+  switch (transformationType) {
+    case 0: // Transpose
+      // Shift all notes up or down by a scale step (2-3 semitones)
+      const transposeInterval = Math.floor(Math.random() * 5) - 2 // -2 to +2 steps
+      for (const note of transformedMotif) {
+        note.pitch = constrainPitch(note.pitch + transposeInterval)
+      }
+      break
+
+    case 1: // Invert
+      // Invert the melodic contour around the first note
+      if (transformedMotif.length > 1) {
+        const pivotPitch = transformedMotif[0].pitch
+        for (let i = 1; i < transformedMotif.length; i++) {
+          // Calculate distance from pivot and invert
+          const distance = transformedMotif[i].pitch - pivotPitch
+          transformedMotif[i].pitch = constrainPitch(pivotPitch - distance)
+        }
+      }
+      break
+
+    case 2: // Retrograde (reverse)
+      // Play the motif backwards (reverse the array)
+      transformedMotif.reverse()
+      break
+
+    case 3: // Octave shift
+      // Only attempt octave shift if it keeps all notes in range
+      // First check if all notes would stay in range after shift
+      const canShiftUp = transformedMotif.every(note => note.pitch + 12 <= maxPitch)
+      const canShiftDown = transformedMotif.every(note => note.pitch - 12 >= minPitch)
+
+      // Only shift if we can keep all notes in range
+      if (canShiftUp && Math.random() < 0.5) {
+        for (const note of transformedMotif) {
+          note.pitch += 12
+        }
+      } else if (canShiftDown) {
+        for (const note of transformedMotif) {
+          note.pitch -= 12
+        }
+      }
+      // If we can't shift safely, don't modify the pitches
+      break
+  }
+
+  return transformedMotif
+}
+
+/**
+ * Generate a random index based on weighted probabilities
+ * @param {array} weights - array of weights for each note in the scale
+ * @returns {number} - index of the selected note in the scale
+ */
+const weightedRandom = weights => {
+  const sum = weights.reduce((a, b) => a + b, 0)
+  let rand = Math.random() * sum
+  return weights.findIndex(w => (rand -= w) < 0)
+}
+
+/**
+ * Calculate the note length based on the given probability
+ * @param {number} noteLengthVariation - note length variation intensity
+ * @returns {number} - note length in bars
+ */
+const getNoteLength = (noteLengthVariation) => {
+  const lengthOptions = [
+    { value: 0.25, weight: Math.max(0, 100 - noteLengthVariation) },
+    { value: 0.5, weight: noteLengthVariation * 0.6 },
+    { value: 1, weight: noteLengthVariation * 0.3 },
+    { value: 2, weight: noteLengthVariation * 0.1 }
+  ]
+
+  // Normalize weights
+  const weights = lengthOptions.map(opt => opt.weight)
+
+  // Return a random length based on the weights
+  return lengthOptions[weightedRandom(weights)].value
+}
+
+/**
  * Generate a note sequence based on the given parameters
  *
  * @param {*} param0 - object with all the parameters for the note generation
@@ -74,155 +346,9 @@ function generateNoteSequence ({
   // Calculate the base note value based on the scale and octave
   const baseNote = (scale - 1) + (octaveStart + 1) * 12
 
-  // Store the last pitch to avoid repeating the same note
-  let lastPitch = null
-
-  // Generate a random index based on the given weights
-  const weightedRandom = weights => {
-    const sum = weights.reduce((a, b) => a + b, 0)
-    let rand = Math.random() * sum
-    return weights.findIndex(w => (rand -= w) < 0)
-  }
-
-  /**
-   * Transform a motif in various ways to create musical development
-   * @param {Array} motif - Array of note objects to transform
-   * @returns {Array} - Transformed motif
-   */
-  const transformMotif = (motif) => {
-    // Choose a transformation type (0: transpose, 1: invert, 2: retrograde/reverse, 3: octave shift)
-    const transformationType = Math.floor(Math.random() * 4)
-
-    // Create a deep copy of the motif to avoid modifying the original
-    const transformedMotif = JSON.parse(JSON.stringify(motif))
-
-    switch (transformationType) {
-      case 0: // Transpose
-        // Shift all notes up or down by a scale step (2-3 semitones)
-        const transposeInterval = Math.floor(Math.random() * 5) - 2 // -2 to +2 steps
-        for (const note of transformedMotif) {
-          note.pitch = Math.min(127, Math.max(0, note.pitch + transposeInterval))
-        }
-        break
-
-      case 1: // Invert
-        // Invert the melodic contour around the first note
-        if (transformedMotif.length > 1) {
-          const pivotPitch = transformedMotif[0].pitch
-          for (let i = 1; i < transformedMotif.length; i++) {
-            // Calculate distance from pivot and invert
-            const distance = transformedMotif[i].pitch - pivotPitch
-            transformedMotif[i].pitch = Math.min(127, Math.max(0, pivotPitch - distance))
-          }
-        }
-        break
-
-      case 2: // Retrograde (reverse)
-        // Play the motif backwards (reverse the array)
-        transformedMotif.reverse()
-        break
-
-      case 3: // Octave shift
-        // Move the whole motif up or down an octave
-        const octaveShift = Math.random() < 0.5 ? 12 : -12
-        for (const note of transformedMotif) {
-          note.pitch = Math.min(127, Math.max(0, note.pitch + octaveShift))
-        }
-        break
-    }
-
-    return transformedMotif
-  }
-
-  /**
-   * Calculate the note length based on the given probability
-   * @param {number} noteLengthVariation - note length variation intensity
-   * @returns {number} - note length in bars
-   */
-  const getNoteLength = () => {
-    const lengthOptions = [
-      { value: 0.25, weight: Math.max(0, 100 - noteLengthVariation) },
-      { value: 0.5, weight: noteLengthVariation * 0.6 },
-      { value: 1, weight: noteLengthVariation * 0.3 },
-      { value: 2, weight: noteLengthVariation * 0.1 }
-    ]
-
-    // Normalize weights
-    const weights = lengthOptions.map(opt => opt.weight)
-
-    // Return a random length based on the weights
-    return lengthOptions[weightedRandom(weights)].value
-  }
-
-  /**
-   * Calculate the pitch value based on the given probability and scale mode
-   * Also handles the octave range and note repetition
-   * @param {number} position - Current position in 16th notes
-   * @returns {number} - pitch value between 0 and 127
-   */
-  const calculatePitch = (position) => {
-    // Create a copy of the probabilities so we can modify them
-    const adjustedProbability = [...probability]
-
-    // Check if current position is a rhythmically important position (1st beat of bar or every 4th 16th note)
-    const isImportantBeat = position % 4 === 0
-
-    // If this is an important beat and rhythmic emphasis is enabled, adjust probabilities
-    if (isImportantBeat && rhythmicEmphasis > 0) {
-      // Find the tonic, fifth, and fourth scale degrees
-      const tonicIndex = 0 // First scale degree (tonic) is always index 0
-
-      // Find the fifth (typically index 4 in diatonic scales) and fourth (typically index 3)
-      let fifthIndex = -1
-      let fourthIndex = -1
-
-      // Get the scale semitones
-      const scaleNotes = SCALE_MODES[scaleMode]
-
-      // Find fifth (7 semitones from tonic) and fourth (5 semitones from tonic)
-      for (let i = 0; i < scaleNotes.length; i++) {
-        if (scaleNotes[i] === 7) fifthIndex = i
-        if (scaleNotes[i] === 5) fourthIndex = i
-      }
-
-      // Calculate emphasis factor (0-1)
-      const emphasisFactor = rhythmicEmphasis / 100
-
-      // Adjust probabilities - increase tonic, fifth, and fourth
-      if (tonicIndex >= 0) adjustedProbability[tonicIndex] += 50 * emphasisFactor
-      if (fifthIndex >= 0) adjustedProbability[fifthIndex] += 30 * emphasisFactor
-      if (fourthIndex >= 0) adjustedProbability[fourthIndex] += 20 * emphasisFactor
-    }
-
-    // Use the adjusted probabilities for note selection
-    const degreeIndex = weightedRandom(adjustedProbability.map(p => p / 100))
-    const interval = SCALE_MODES[scaleMode][degreeIndex % SCALE_MODES[scaleMode].length]
-    const octaveOffset = Math.floor(Math.random() * octaveRange)
-    let pitch = baseNote + interval + (12 * octaveOffset)
-
-    // Avoid repeating the same note
-    if (!allowRepeatNotes && lastPitch === pitch) {
-      const alternatives = [
-        pitch + 7, // Perfect Fifth
-        pitch - 7,
-        pitch + 5, // Perfect Fourth
-        pitch - 5,
-        pitch + 12, // Octave up
-        pitch - 12 // Octave down
-      ].filter(p => p >= 0 && p <= 127)
-
-      // Pick a random alternative if available
-      if (alternatives.length > 0) {
-        pitch = alternatives[Math.floor(Math.random() * alternatives.length)]
-      }
-    }
-
-    // Store the last pitch for the next iteration
-    lastPitch = pitch
-
-    // Return the pitch value clamped between 0 and 127
-    return Math.min(127, Math.max(0, pitch))
-  }
+  // Keep track of recently used pitches (last 3-5 notes) to avoid repetition
+  const recentPitches = []
+  const maxRecentPitches = 4 // How many recent pitches to remember
 
   // Initializations
   const totalSteps = lengthInBars * 16
@@ -243,8 +369,14 @@ function generateNoteSequence ({
       const motifLength = Math.min(history.length, Math.floor(Math.random() * 3) + 3)
       const motif = history.slice(-motifLength)
 
-      // Transform the motif to create development
-      const transformedMotif = transformMotif(motif)
+      // Transform the motif to create development - passing scale parameters
+      const transformedMotif = transformMotif(
+        motif,
+        baseNote,
+        octaveStart,
+        octaveRange,
+        scaleMode
+      )
 
       // Use the transformed motif
       for (const note of transformedMotif) {
@@ -305,8 +437,8 @@ function generateNoteSequence ({
             position: currentPosition,
             pitch: note.pitch,
             velocity: note.velocity,
-            length: note.length,
             releaseVelocity: note.releaseVelocity,
+            length: note.length,
             pressure: note.pressure,
             timbre: note.timbre
           })
@@ -319,7 +451,7 @@ function generateNoteSequence ({
     }
 
     // Generate new note
-    const noteLength = getNoteLength()
+    const noteLength = getNoteLength(noteLengthVariation) // Get the note length based on the variation
     const stepsNeeded = noteLength / 0.25
 
     // Check if the note fits in the remaining steps
@@ -373,8 +505,24 @@ function generateNoteSequence ({
       // Clamp the pressure to the range of 0 to 1
       const pressure = Math.max(0, Math.min(1, calculatedPressure))
 
-      // Pass the current position to calculatePitch for rhythmic emphasis
-      const pitch = calculatePitch(currentPosition)
+      // Pass the current position and recent pitches to calculatePitch
+      const pitch = calculatePitch(
+        currentPosition,
+        probability,
+        rhythmicEmphasis,
+        scaleMode,
+        octaveRange,
+        weightedRandom,
+        allowRepeatNotes,
+        baseNote,
+        recentPitches
+      )
+
+      // Add to recent pitches and keep the list at fixed length
+      recentPitches.push(pitch)
+      if (recentPitches.length > maxRecentPitches) {
+        recentPitches.shift() // Remove the oldest pitch
+      }
 
       // Add the note to the global data
       globalNoteData.push({
@@ -438,7 +586,6 @@ function generateAlternativeMelody (originalNotes, scaleMode, scaleKey, changePr
 
   // Validate scale data
   if (!scaleSemitones || scaleSemitones.length === 0) {
-    println('Error in generateAlternativeMelody: Scale mode not found or empty: ' + scaleMode)
     return originalNotes // Return original if scale is invalid
   }
 
@@ -579,7 +726,7 @@ function convertIntervalsToSemitones (scaleIntervals) {
  * init the Bitwig Controller script
  */
 function init () {
-  println('-- Melody Maker Go! --')
+  log('-- Melody Maker Go! --')
 
   const documentState = host.getDocumentState()
   const cursorClipArranger = host.createArrangerCursorClip((16 * 8), 128)
