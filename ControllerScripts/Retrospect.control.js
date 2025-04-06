@@ -13,7 +13,16 @@ host.defineMidiPorts(1, 0)
 // Define the dropdown options for the UI
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const booleanOption = ['No', 'Yes']
-let scaleIntervals
+
+/**
+ * will be filled in with scales from external file
+ * @type {{[key: string]: number[]}}
+ */
+let scaleIntervals = {}
+
+/**
+ * @type {API.NoteInput | null}
+ */
 let bitwigNoteInput = null
 
 // load in the external scales.js file
@@ -40,11 +49,36 @@ if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(scaleIntervals)
 
-// hold the generated scale notes globally
+/**
+ * hold the generated scale notes globally
+ * @type {number[]}
+ */
 let scaleNotes = []
+
+/**
+ * @type {boolean | null}
+ */
 let FilterKeys = null
+
 let currentTempo = 120
+
+/**
+ * @typedef {Object} Event
+ * @property {string} type
+ * @property {string} state
+ * @property {number} channel
+ * @property {number} pitch
+ * @property {number} velocity
+ * @property {number} timestamp
+ * @property {boolean} paired
+ * @property {number} [duration]
+ */
+
+/**
+ * @type {Array<Event>}
+ */
 let currentBuffer = []
+
 let lastMidiUpdateTime = Date.now()
 
 /**
@@ -201,7 +235,7 @@ function onMidi (status, data1, data2) {
 
   // send notes to Bitwig note input!
   // because we blocked the passthrough with setKeyTranslationTable()
-  bitwigNoteInput.sendRawMidiEvent(status, data1, data2)
+  bitwigNoteInput?.sendRawMidiEvent(status, data1, data2)
 
   // Update buffer window
   const cutoffTime = now - getCurrentBufferWindow()
@@ -252,7 +286,7 @@ function onMidi (status, data1, data2) {
 
 /**
  * Write the generated notes to the cursor clip
- * @param {*} channelNumber - channel number of the note
+ * @param {Array<Event>} notes - array of note objects
  * @param {*} cursorClip - cursor clip to write the notes to
  */
 function writeNotesToClip (notes, cursorClip) {
@@ -325,6 +359,7 @@ function init () {
   const clipType = documentState.getEnumSetting('Clip Type', 'Retrospect', ['Launcher', 'Arranger'], 'Arranger')
 
   // grab the bpm from the transport
+  // @ts-ignore
   transport.tempo().value().addValueObserver((tempo) => {
     // get the tempo in raw format. the thing is tempo is from 0 to 1
     // 0 represents 20 bpm and 1 represents 666 bpm
@@ -357,7 +392,7 @@ function init () {
   })
 
   // add observers to the selected scale and scale mode
-  selectedScale.addValueObserver((scale) => {
+  selectedScale.addValueObserver((_scale) => {
     // get root note as midi note number
     const rootIndex = listScale.indexOf(selectedScale.get())
     const rootNote = 60 + rootIndex
@@ -376,8 +411,12 @@ function init () {
   })
 }
 
+/**
+ * @param {String} text
+ * @param {Object} [obj]
+ */
 function log (text, obj) {
-  println(text + ' : ' + JSON.stringify(obj), 2)
+  println(text + ' : ' + JSON.stringify(obj))
 }
 function flush () {}
 function exit () {

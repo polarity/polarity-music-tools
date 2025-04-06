@@ -1,3 +1,4 @@
+// @ts-ignore
 scaleIntervals = {
   Lydian: [2, 2, 2, 1, 2, 2, 1], // Major scale with raised 4th
   Major: [2, 2, 1, 2, 2, 2, 1], // Major scale

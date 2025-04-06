@@ -13,7 +13,12 @@ host.defineController('Polarity', 'Scale Maker', '0.1', 'b3f52fc6-e887-4bb6-927a
 // Define the dropdown options for the UI
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const booleanOption = ['No', 'Yes']
-let scaleIntervals
+
+/**
+ * will be filled in with scales from external file
+ * @type {{[key: string]: number[]}}
+ */
+let scaleIntervals = {}
 
 // load in the external scales.js file
 load('scales.js')
@@ -39,7 +44,10 @@ if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(scaleIntervals)
 
-// Store the current notes in the clip
+/**
+ * Store the current notes in the clip
+ * @type {Array<number[]>}
+ */
 const currentNotesInClip = []
 
 /**
@@ -162,7 +170,7 @@ function generateDirectionalNotes (notes, startNote, intervals, direction) {
  * for C minor, we want to move C# to D, not to C etc.
  * @param {*} y - note to find closest higher and lower notes
  * @param {*} scaleNotes - array of notes in the scale
- * @returns {Object} - object with lower and higher notes
+ * @returns {{lower: number, higher: number}} - object with lower and higher notes
  */
 function findClosestHigherAndLower (y, scaleNotes) {
   let low = 0; let high = scaleNotes.length - 1
@@ -335,7 +343,7 @@ function init () {
 
   /**
    * get the correct cursor clip based on the selected clip type
-   * @returns {CursorClip} - the cursor clip based on the selected clip type
+   * @returns the cursor clip based on the selected clip type
    */
   function getCursorClip () {
     if (clipType.get() === 'Arranger') {
