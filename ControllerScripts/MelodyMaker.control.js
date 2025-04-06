@@ -11,7 +11,12 @@ host.defineController('Polarity', 'Melody Maker', '0.4.1', '1f73b4d7-0cfe-49e6-b
 
 // define the dropdown options for the ui
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-let scaleIntervals // will be filled in with scales from external file
+
+/**
+ * will be filled in with scales from external file
+ * @type {{[key: string]: number[]}}
+ */
+let scaleIntervals = {}
 
 // load in the external scales.js file
 load('scales.js')
@@ -33,14 +38,32 @@ if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
   }
 }
 
-// convert the scaleIntervals to semitones
+/**
+ * convert the scaleIntervals to semitones
+ * @type {Object<string, number[]>}
+ */
 const SCALE_MODES = convertIntervalsToSemitones(scaleIntervals)
 
 // convert scaleIntervals object to an array of names
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(SCALE_MODES)
 
-// store the generated notes in a global variable
+/**
+ * @typedef {Object} NoteEvent
+ * @property {number} [position] - The position of the note in 16th notes
+ * @property {number} channel - The MIDI channel number
+ * @property {number} pitch - The pitch value of the note
+ * @property {number} velocity - The velocity/intensity of the note (typically 0-127)
+ * @property {number} length - The duration of the note
+ * @property {number} releaseVelocity - The velocity when the note is released
+ * @property {number} pressure - The pressure/aftertouch value
+ * @property {number} timbre - The timbre/tone quality parameter
+ */
+
+/**
+ * store the generated notes in a global variable
+ * @type {Array<NoteEvent>}
+ */
 let globalNoteData = []
 
 /**
@@ -48,7 +71,14 @@ let globalNoteData = []
  * Also handles the octave range and note repetition
  * refactoring of the original code, moved outside of generateNoteSequence()
  * @param {number} position - Current position in 16th notes
- * @param {array} recentPitches - Array of recently used pitches to avoid repetition
+ * @param {Array<number>} probability
+ * @param {number} rhythmicEmphasis
+ * @param {string} scaleMode
+ * @param {number} octaveRange
+ * @param {function} weightedRandom
+ * @param {boolean} allowRepeatNotes
+ * @param {number} baseNote
+ * @param {Array<Object>} recentPitches - Array of recently used pitches to avoid repetition
  * @returns {number} - pitch value between 0 and 127
  */
 const calculatePitch = (position, probability, rhythmicEmphasis, scaleMode, octaveRange, weightedRandom, allowRepeatNotes, baseNote, recentPitches = []) => {
@@ -163,12 +193,12 @@ const calculatePitch = (position, probability, rhythmicEmphasis, scaleMode, octa
 
 /**
  * Transform a motif in various ways to create musical development
- * @param {Array} motif - Array of note objects to transform
+ * @param {Array<NoteEvent>} motif - Array of note objects to transform
  * @param {number} baseNote - Base note for the selected scale/octave
  * @param {number} octaveStart - Starting octave
  * @param {number} octaveRange - Range of octaves to use
  * @param {string} scaleMode - Selected scale mode
- * @returns {Array} - Transformed motif
+ * @returns {Array<NoteEvent>} - Transformed motif
  */
 const transformMotif = (motif, baseNote, octaveStart, octaveRange, scaleMode) => {
   // Define octave boundaries for consistent enforcement
@@ -232,7 +262,10 @@ const transformMotif = (motif, baseNote, octaveStart, octaveRange, scaleMode) =>
   // Choose a transformation type (0: transpose, 1: invert, 2: retrograde/reverse, 3: octave shift)
   const transformationType = Math.floor(Math.random() * 4)
 
-  // Create a deep copy of the motif to avoid modifying the original
+  /**
+   * Create a deep copy of the motif to avoid modifying the original
+   * @type {Array<NoteEvent>}
+   */
   const transformedMotif = JSON.parse(JSON.stringify(motif))
 
   switch (transformationType) {
@@ -286,7 +319,7 @@ const transformMotif = (motif, baseNote, octaveStart, octaveRange, scaleMode) =>
 
 /**
  * Generate a random index based on weighted probabilities
- * @param {array} weights - array of weights for each note in the scale
+ * @param {Array<number>} weights - array of weights for each note in the scale
  * @returns {number} - index of the selected note in the scale
  */
 const weightedRandom = weights => {
@@ -319,7 +352,7 @@ const getNoteLength = (noteLengthVariation) => {
  * Generate a note sequence based on the given parameters
  *
  * @param {*} param0 - object with all the parameters for the note generation
- * @returns {Array} - array of note objects
+ * @returns {Array<NoteEvent>} - array of note objects
  */
 function generateNoteSequence ({
   scale,
@@ -354,9 +387,12 @@ function generateNoteSequence ({
   const totalSteps = lengthInBars * 16
   let currentPosition = 0
 
-  // Store the generated notes in a global variable
-  // to store the last 8 notes to be able to repeat them
-  // this is used for the repetition chance
+  /**
+   * Store the generated notes in a global variable
+   * to store the last 8 notes to be able to repeat them
+   * this is used for the repetition chance
+   * @type {Array<NoteEvent>}
+   */
   const history = []
 
   // Main loop
@@ -573,11 +609,11 @@ function generateNoteSequence ({
 /**
  * Generates a variation of a given melody by changing some notes
  * to adjacent notes within the specified scale.
- * @param {Array} originalNotes - The original array of note objects.
+ * @param {Array<NoteEvent>} originalNotes - The original array of note objects.
  * @param {string} scaleMode - The name of the scale mode (e.g., 'Major').
  * @param {string} scaleKey - The root note of the scale (e.g., 'C').
  * @param {number} changeProbability - Probability (0-1) of changing any given note.
- * @returns {Array} - A new array of note objects representing the variation.
+ * @returns {Array<NoteEvent>} - A new array of note objects representing the variation.
  */
 function generateAlternativeMelody (originalNotes, scaleMode, scaleKey, changeProbability = 0.25) {
   const scaleSemitones = SCALE_MODES[scaleMode]
@@ -655,8 +691,8 @@ function generateAlternativeMelody (originalNotes, scaleMode, scaleKey, changePr
 
 /**
  * Write an array of notes to the specified Bitwig clip.
- * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
- * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
+ * @param {Array<NoteEvent>} notesToWrite - Array of note objects { position, pitch, velocity, length }.
+ * @param {API.Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
  */
 function writeNotesToClip (notesToWrite, cursorClip) {
   // Iterate through the notes and add them to the clip
@@ -682,8 +718,8 @@ function writeNotesToClip (notesToWrite, cursorClip) {
 
 /**
  * Change the MPE of the notes in the specified Bitwig clip.
- * @param {Array} notesToWrite - Array of note objects { position, pitch, velocity, length }.
- * @param {Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
+ * @param {Array<NoteEvent>} notesToWrite - Array of note objects { position, pitch, velocity, length }.
+ * @param {API.Clip} cursorClip - Bitwig Studio cursor clip object to write the notes into.
  */
 function modifyNotesInClip (notesToWrite, cursorClip) {
   // Iterate through the notes and add them to the clip
@@ -705,9 +741,12 @@ function modifyNotesInClip (notesToWrite, cursorClip) {
  * this function converts the scale intervals to semitones
  * so we can exchange the scale definitions easily
  * @param {*} scaleIntervals
- * @returns {Object} - converted scale intervals to semitones
+ * @returns {Object<string, number[]>} - converted scale intervals to semitones
  */
 function convertIntervalsToSemitones (scaleIntervals) {
+  /**
+   * @type {Object<string, number[]>}
+   */
   const convertedScales = {}
   for (const [scaleName, intervals] of Object.entries(scaleIntervals)) {
     let current = 0
@@ -759,7 +798,7 @@ function init () {
 
   /**
    * get the correct cursor clip based on the selected clip type
-   * @returns {CursorClip} - the cursor clip based on the selected clip type
+   * @returns {API.Clip} - the cursor clip based on the selected clip type
    */
   function getCursorClip () {
     const clip = clipType.get() === 'Arranger' ? cursorClipArranger : cursorClipLauncher
@@ -781,7 +820,7 @@ function init () {
   const generate = () => {
     // generate new notes
     generateNoteSequence({
-      scale: parseInt(listScale.indexOf(selectedScale.get())) + 1, // the chosen scale
+      scale: listScale.indexOf(selectedScale.get()) + 1, // the chosen scale
       scaleMode: selectedScaleMode.get(), // the chosen scale mode
       octaveStart: octaveStart.getRaw(), // in which octave to start
       octaveRange: octaveRange.getRaw(), // how many octaves to use
@@ -884,8 +923,12 @@ function init () {
   })
 }
 
+/**
+ * @param {String} text
+ * @param {Object} [obj]
+ */
 function log (text, obj) {
-  println(text + ' : ' + JSON.stringify(obj), 2)
+  println(text + ' : ' + JSON.stringify(obj))
 }
 
 function flush () {

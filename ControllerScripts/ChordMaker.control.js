@@ -10,7 +10,12 @@ host.defineController('Polarity', 'Chord Maker', '0.5', '665f84ae-1958-4f24-af31
 
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
-let scaleIntervals
+/**
+ * will be filled in with scales from external file
+ * @type {{[key: string]: number[]}}
+ */
+let scaleIntervals = {}
+
 load('scales.js')
 
 if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
@@ -34,14 +39,35 @@ const scaleIntervalsSemitones = convertIntervalsToSemitones(scaleIntervals)
 // get an array of the scale names (strings)
 const listScaleMode = Object.keys(scaleIntervalsSemitones)
 
+/**
+ * @typedef {Object} Note
+ * @property {number} channelNumber
+ * @property {number} pitch
+ * @property {number} position
+ * @property {number} velocity
+ * @property {number} length
+ */
+
+/**
+ * @typedef {Object} ProgressionStep
+ * @property {Array<Note>} notes
+ * @property {number} chordIndex
+ */
+
+/**
+ * @type {Array<ProgressionStep>}
+ */
 let Progression = []
 
 /**
  * Converts the scale intervals to arrays of semitone offsets.
  * @param {object} scaleIntervals - An object of modes, each an array of intervals.
- * @returns {object} - An object with the same keys but semitone arrays as values.
+ * @returns {{[key: string]: number[]}} - An object with the same keys but semitone arrays as values.
  */
 function convertIntervalsToSemitones (scaleIntervals) {
+  /**
+   * @type {{[key: string]: number[]}}
+   */
   const convertedScales = {}
   for (const [name, intervals] of Object.entries(scaleIntervals)) {
     let current = 0
@@ -63,13 +89,16 @@ function convertIntervalsToSemitones (scaleIntervals) {
  * @param {number} scale - The root note (0 = C, 1 = C#, 2 = D, 3 = D#, etc.).
  * @param {number[]} mode - Array of semitone steps that define the scale mode (e.g. [2,2,1,2,2,2,1] for a major scale).
  * @param {number} [length=4] - How many chords to generate.
- * @returns {Object[]} An array of chord objects. Each object has note info for each chord tone.
+ * @returns {Array<ProgressionStep>} An array of chord objects. Each object has note info for each chord tone.
  *
  * Example usage:
  * generateChordProgression(0, [2,2,1,2,2,2,1], 4);
  */
 function generateChordProgression (scale, mode, length = 4) {
   // clean the global progression array
+  /**
+   * @type {Array<ProgressionStep>}
+   */
   const progression = []
 
   // We pick a base octave to avoid very low or very high notes.
@@ -82,6 +111,9 @@ function generateChordProgression (scale, mode, length = 4) {
 
   // 2) Define chord flow with probabilities. Each possible next chord has a weight.
   // Higher numbers mean more likely transitions.
+  /**
+   * @type {Object<number, Array<Array<number>>>}
+   */
   const chordFlow = {
     0: [[1, 15], [2, 10], [3, 30], [4, 35], [5, 10]], // I -> strong tendency to V and IV
     1: [[4, 80], [0, 20]], // ii -> very strong tendency to V
@@ -93,6 +125,9 @@ function generateChordProgression (scale, mode, length = 4) {
   }
 
   // 3) Pick chords using weighted probabilities. Start at I (index 0).
+  /**
+   * @type {number}
+   */
   let currentChordIndex = 0
   const chordIndices = [currentChordIndex]
 
@@ -206,7 +241,7 @@ function buildScaleNotes (rootNote, mode, octaves = 4) {
 
 /**
  * Add a bass note one octave below the root note in each chord.
- * @param {*} progression
+ * @param {Array<ProgressionStep>} progression
  * @returns
  */
 function addBassNote (progression) {
@@ -237,8 +272,8 @@ function addBassNote (progression) {
  * Note: This approach assumes that stacking thirds applies.
  * It may not be suitable for suspended chords (e.g., sus2).
  *
- * @param {Array} progression - Array of chord objects.
- * @returns {Array} A new progression with added seventh notes.
+ * @param {Array<ProgressionStep>} progression - Array of chord objects.
+ * @returns {Array<ProgressionStep>} A new progression with added seventh notes.
  */
 function addSeventhNoteFromThird (progression) {
   return progression.map(chord => {
@@ -264,8 +299,8 @@ function addSeventhNoteFromThird (progression) {
 /**
  * Add a 9th note to each chord based on the root note.
  * This function adds the 9th note by shifting the third note by 14 semitones.
- * @param {Array} progression - Array of chord objects.
- * @returns {Array} A new progression with added seventh notes.
+ * @param {Array<ProgressionStep>} progression - Array of chord objects.
+ * @returns {Array<ProgressionStep>} A new progression with added seventh notes.
  */
 function addNinthNoteFromRoot (progression) {
   return progression.map(chord => {
@@ -294,18 +329,18 @@ function addNinthNoteFromRoot (progression) {
  * minimum interval between voices (using only octave shifts) and aligning a
  * specific pedal voice.
  *
- * @param {Object[]} chords - Array of chord objects, each containing a notes array.
+ * @param {Array<ProgressionStep>} chords - Array of chord objects, each containing a notes array.
  * @param {Object} [options={}] - Options to affect voicing.
  * @param {number} [options.minInterval=1] - Minimum interval (in semitones) allowed between voices.
  *        Note: Adjustments are made only in full octave (12 semitone) steps.
  * @param {number|null} [options.pedalChannel=null] - Channel number to use as the pedal tone.
- * @returns {Object[]} New array of chords with optimized voice leading.
+ * @returns {Array<ProgressionStep>} New array of chords with optimized voice leading.
  */
 function revoiceChords (chords, options = {}) {
   if (chords.length === 0) return chords
 
   const minInterval = options.minInterval !== undefined ? options.minInterval : 1
-  const pedalChannel = options.pedalChannel !== 0 ? options.pedalChannel - 1 : null
+  const pedalChannel = options.pedalChannel && options.pedalChannel !== 0 ? options.pedalChannel - 1 : null
 
   // The first chord remains unchanged.
   const newChords = [chords[0]]
@@ -436,7 +471,7 @@ function revoiceChords (chords, options = {}) {
 
 /**
  * Write the generated notes to the cursor clip
- * @param {*} channelNumber - channel number of the note
+ * @param {Array<ProgressionStep>} progression
  * @param {*} cursorClip - cursor clip to write the notes to
  */
 function writeNotesToClip (progression, cursorClip) {
@@ -522,7 +557,7 @@ function init () {
   documentState.getSignalSetting('Generate new Chords', 'Chord Maker', 'Generate!').addSignalObserver(() => {
     // create a chord progression and save it to the global variable
     Progression = generateChordProgression(
-      parseInt(listScale.indexOf(chordScale.get())), // 0 = C
+      listScale.indexOf(chordScale.get()), // 0 = C
       scaleIntervalsSemitones[chordScaleMode.get()], // semitone steps for the mode
       chordBars.getRaw() // get the Number of chords from the ui element
     )
@@ -538,8 +573,12 @@ function init () {
   })
 }
 
+/**
+ * @param {String} text
+ * @param {Object} [obj]
+ */
 function log (text, obj) {
-  println(text + ' : ' + JSON.stringify(obj), 2)
+  println(text + ' : ' + JSON.stringify(obj))
 }
 function flush () {}
 function exit () {

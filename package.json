@@ -1,0 +1,11 @@
+{
+  "name": "polarity-music-tools",
+  "version": "1.0.0",
+  "scripts": {
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typed-bitwig-api": "^19.0.0",
+    "typescript": "^5.8.3"
+  }
+}
