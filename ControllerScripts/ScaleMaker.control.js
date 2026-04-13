@@ -2,13 +2,13 @@
  * Scale Maker
  * Controller script for Bitwig Studio
  * Generates Scales in the Piano roll or corrects selected notes to the chosen scale
- * @version 0.1
+ * @version 0.2
  * @author Polarity
  */
 
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
-host.defineController('Polarity', 'Scale Maker', '0.1', 'b3f52fc6-e887-4bb6-927a-57b11a60e087', 'Polarity')
+host.defineController('Polarity', 'Scale Maker', '0.2', 'b3f52fc6-e887-4bb6-927a-57b11a60e087', 'Polarity')
 
 // Define the dropdown options for the UI
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -41,6 +41,12 @@ const listScaleMode = Object.keys(scaleIntervals)
 
 // Store the current notes in the clip
 const currentNotesInClip = []
+
+// Store which notes are currently selected in the clip.
+// Populated by addNoteStepObserver, which fires whenever a NoteStep changes
+// (including selection/deselection). Structure mirrors currentNotesInClip:
+// selectedNotesInClip[x][y] = true when the note at step x, pitch y is selected.
+const selectedNotesInClip = []
 
 /**
  * Generate notes in the scale
@@ -205,11 +211,17 @@ function findNearestScaleNote (y, scaleNotes) {
 }
 
 /**
- * Correct notes to the selected scale
+ * Correct SELECTED notes to the chosen scale.
+ *
+ * Only notes that appear in selectedNotesInClip are moved. Unselected notes
+ * are treated as immovable obstacles: their pitch positions are pre-loaded into
+ * usedTargets so the collision-avoidance logic cannot accidentally push a
+ * selected note onto an occupied slot.
+ *
  * @param {*} cursorClip - cursorClip object (Arranger or Launcher)
  * @param {*} selectedScaleMode - selected scale mode
  * @param {*} selectedScale - selected scale
- * @returns {void} - corrects the notes in the clip to the selected scale
+ * @returns {void}
  */
 function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
   const scaleMode = selectedScaleMode.get()
@@ -228,18 +240,38 @@ function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
     const x = parseInt(xStr)
     const stepNotes = currentNotesInClip[x] || {}
 
-    // get the original notes and sort them by note number
-    const originalNotes = Object.keys(stepNotes).map(Number).sort((a, b) => a - b)
+    // All notes present at this step (selected + unselected), sorted ascending.
+    // Used as the "occupied positions" reference to prevent collision.
+    const allNotesAtStep = Object.keys(stepNotes).map(Number).sort((a, b) => a - b)
 
-    // create a set to store the used targets
+    // Only operate on notes that are currently selected.
+    const selectionAtStep = selectedNotesInClip[x] || {}
+    const selectedNotes = allNotesAtStep.filter(y => selectionAtStep[y] === true)
+
+    // Nothing selected at this step — skip entirely.
+    if (selectedNotes.length === 0) continue
+
+    // Pre-populate usedTargets with positions held by UNSELECTED notes.
+    // These notes are not moving, so their pitches are permanently occupied.
+    // Also pre-populate with selected notes that are already in scale —
+    // they stay put, so their positions are taken as well.
     const usedTargets = new Set()
-
-    // loop through the original notes and correct them to the scale
-    for (const y of originalNotes) {
-      if (scaleNotes.includes(y)) {
+    for (const y of allNotesAtStep) {
+      if (!selectionAtStep[y]) {
+        // Unselected note — its position is permanently taken.
         usedTargets.add(y)
-        continue
+      } else if (scaleNotes.includes(y)) {
+        // Selected but already in scale — no move needed, position is taken.
+        usedTargets.add(y)
       }
+    }
+
+    // Process selected notes in ascending pitch order so that when two
+    // adjacent notes compete for the same target the lower one resolves first
+    // (consistent with the original behaviour).
+    for (const y of selectedNotes) {
+      // Already in scale — nothing to do (position already added to usedTargets above).
+      if (scaleNotes.includes(y)) continue
 
       // find the closest higher and lower notes in the scale
       const { lower, higher } = findClosestHigherAndLower(y, scaleNotes)
@@ -252,8 +284,9 @@ function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
       if (higher !== Infinity) candidates.push(higher)
       if (candidates.length === 0) continue
 
-      // filter the candidates array to only have notes that are not used or in the original notes
-      const availableCandidates = candidates.filter(c => !usedTargets.has(c) && !originalNotes.includes(c))
+      // filter the candidates array to only have notes that are not used or
+      // already occupied by any note (selected or not) at this step.
+      const availableCandidates = candidates.filter(c => !usedTargets.has(c) && !allNotesAtStep.includes(c))
       let targetY
 
       // if there are no available candidates, we want to find the nearest scale note
@@ -333,6 +366,13 @@ function init () {
   cursorClipArranger.scrollToKey(0)
   cursorClipLauncher.scrollToKey(0)
 
+  // Track note selection state via addNoteStepObserver.
+  // This observer fires whenever any property of a NoteStep changes,
+  // including when notes are selected or deselected in the piano roll.
+  // NoteStep.isIsSelected() is available since Bitwig API version 14.
+  cursorClipArranger.addNoteStepObserver(observingNoteSteps)
+  cursorClipLauncher.addNoteStepObserver(observingNoteSteps)
+
   /**
    * get the correct cursor clip based on the selected clip type
    * @returns {CursorClip} - the cursor clip based on the selected clip type
@@ -411,6 +451,32 @@ function init () {
   documentState.getSignalSetting('Write Note Stack', 'Scale Maker', 'Write Note Stack').addSignalObserver(() => {
     writeAllNotesOfScale(getCursorClip(), selectedScaleMode, selectedScale)
   })
+}
+
+/**
+ * Observer for NoteStep changes (including selection state).
+ * Called by both the Arranger and Launcher cursor clip observers registered in init().
+ * Maintains the selectedNotesInClip map so correctNotesToScale always has
+ * up-to-date selection information.
+ *
+ * @param {NoteStep} noteStep - The changed NoteStep object
+ */
+function observingNoteSteps (noteStep) {
+  const x = noteStep.x()
+  const y = noteStep.y()
+
+  if (selectedNotesInClip[x] === undefined) {
+    selectedNotesInClip[x] = []
+  }
+
+  // A note is "selected" only when it exists AND is selected in the piano roll.
+  // When the note is removed (state == Empty) isIsSelected() is false, so this
+  // correctly cleans up stale selection entries automatically.
+  if (noteStep.isIsSelected()) {
+    selectedNotesInClip[x][y] = true
+  } else {
+    delete selectedNotesInClip[x][y]
+  }
 }
 
 function flush () {}
