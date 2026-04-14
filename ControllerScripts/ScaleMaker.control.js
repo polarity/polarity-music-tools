@@ -2,13 +2,13 @@
  * Scale Maker
  * Controller script for Bitwig Studio
  * Generates Scales in the Piano roll or corrects selected notes to the chosen scale
- * @version 0.1
+ * @version 0.2
  * @author Polarity
  */
 
 loadAPI(17)
 host.setShouldFailOnDeprecatedUse(true)
-host.defineController('Polarity', 'Scale Maker', '0.1', 'b3f52fc6-e887-4bb6-927a-57b11a60e087', 'Polarity')
+host.defineController('Polarity', 'Scale Maker', '0.2', 'b3f52fc6-e887-4bb6-927a-57b11a60e087', 'Polarity')
 
 // Define the dropdown options for the UI
 const listScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -39,8 +39,18 @@ if (!scaleIntervals || Object.keys(scaleIntervals).length === 0) {
 // we need this for the dropdown in the UI
 const listScaleMode = Object.keys(scaleIntervals)
 
+// Total step grid width — must match the value passed to createArrangerCursorClip /
+// createLauncherCursorClip so that getNoteEndStep never walks off the end of the array.
+const MAX_STEPS = 16 * 8
+
 // Store the current notes in the clip
 const currentNotesInClip = []
+
+// Store which notes are currently selected in the clip.
+// Populated by addNoteStepObserver, which fires whenever a NoteStep changes
+// (including selection/deselection). Structure mirrors currentNotesInClip:
+// selectedNotesInClip[x][y] = true when the note at step x, pitch y is selected.
+const selectedNotesInClip = []
 
 /**
  * Generate notes in the scale
@@ -205,11 +215,121 @@ function findNearestScaleNote (y, scaleNotes) {
 }
 
 /**
- * Correct notes to the selected scale
- * @param {*} cursorClip - cursorClip object (Arranger or Launcher)
+ * Find the last step (inclusive) occupied by the note that starts at (startX, y).
+ * A note occupies its onset step (stat=2) plus every subsequent step where it is
+ * sustained (stat=1).  Knowing the full span lets us detect conflicts with notes
+ * that begin anywhere inside the moved note's duration, not just at its onset.
+ *
+ * @param {number} startX - onset step of the note
+ * @param {number} y      - pitch of the note
+ * @returns {number} last step the note occupies
+ */
+function getNoteEndStep (startX, y) {
+  let endX = startX
+  while (
+    endX + 1 < MAX_STEPS &&
+    currentNotesInClip[endX + 1] !== undefined &&
+    currentNotesInClip[endX + 1][y] === 1
+  ) {
+    endX++
+  }
+  return endX
+}
+
+/**
+ * Walk backwards from a sustained step to find the onset (stat=2) step of a note.
+ * Used by isPitchOccupiedByUnselectedInRange to look up whether the note that is
+ * sustained at a given step is selected or not (selection is keyed on onset step).
+ *
+ * @param {number} sustainedAtStep - a step where the note has stat=1
+ * @param {number} pitch            - pitch of the note
+ * @returns {number} the onset step of the note (where stat=2)
+ */
+function getNoteOnsetStep (sustainedAtStep, pitch) {
+  let step = sustainedAtStep
+  while (step > 0) {
+    const prevStat = currentNotesInClip[step - 1] && currentNotesInClip[step - 1][pitch]
+    if (!prevStat) break   // nothing before this step — treat current step as onset
+    step--
+    if (prevStat === 2) break  // stepped onto the note-on cell
+    // prevStat === 1 → keep walking back
+  }
+  return step
+}
+
+/**
+ * Return true if any note (selected or unselected) occupies the given pitch at
+ * any step in the closed interval [startX, endX].
+ *
+ * Covers three overlap shapes:
+ *   • a note that starts inside the range   (stat=2 found in range)
+ *   • a note that started before startX and is still sustained into the range
+ *                                            (stat=1 found at startX)
+ *   • a note that both starts and ends completely inside the range
+ *
+ * @param {number} startX - first step to check (inclusive)
+ * @param {number} endX   - last step to check (inclusive)
+ * @param {number} pitch  - MIDI pitch to test
+ * @returns {boolean}
+ */
+function isPitchOccupiedInRange (startX, endX, pitch) {
+  for (let step = startX; step <= endX; step++) {
+    if (currentNotesInClip[step] !== undefined && currentNotesInClip[step][pitch] !== undefined) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Return true if an UNSELECTED note occupies the given pitch at any step in
+ * [startX, endX].  Selected notes are ignored because they are being moved
+ * and will vacate their current positions.
+ *
+ * For a sustained cell (stat=1) the check walks back to the note's onset step
+ * and inspects selectedNotesInClip there, because selection is keyed on the
+ * onset step, not the sustained steps.
+ *
+ * @param {number} startX - first step to check (inclusive)
+ * @param {number} endX   - last step to check (inclusive)
+ * @param {number} pitch  - MIDI pitch to test
+ * @returns {boolean}
+ */
+function isPitchOccupiedByUnselectedInRange (startX, endX, pitch) {
+  for (let step = startX; step <= endX; step++) {
+    const stepData = currentNotesInClip[step]
+    if (stepData === undefined || stepData[pitch] === undefined) continue
+
+    const stat = stepData[pitch]
+    let onsetStep
+
+    if (stat === 2) {
+      onsetStep = step
+    } else {
+      // stat === 1: sustained — find the onset to look up selection
+      onsetStep = getNoteOnsetStep(step, pitch)
+    }
+
+    const isIsSelected = selectedNotesInClip[onsetStep] && selectedNotesInClip[onsetStep][pitch]
+    if (!isIsSelected) return true  // unselected note occupies this pitch in the range
+  }
+  return false
+}
+
+/**
+ * Correct SELECTED notes to the chosen scale.
+ *
+ * Only notes that appear in selectedNotesInClip are moved.  Collision detection
+ * is range-aware: before committing a move the algorithm checks every step from
+ * the moved note's onset to its release (note-off), so notes that begin anywhere
+ * inside that window — not just at the same onset step — are correctly treated as
+ * obstacles.  Unselected notes are never disturbed; selected notes that are
+ * already in the scale are left in place and their positions marked occupied.
+ *
+ * @param {*} cursorClip        - cursorClip object (Arranger or Launcher)
  * @param {*} selectedScaleMode - selected scale mode
- * @param {*} selectedScale - selected scale
- * @returns {void} - corrects the notes in the clip to the selected scale
+ * @param {*} selectedScale     - selected scale root
+ * @returns {void}
  */
 function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
   const scaleMode = selectedScaleMode.get()
@@ -228,50 +348,78 @@ function correctNotesToScale (cursorClip, selectedScaleMode, selectedScale) {
     const x = parseInt(xStr)
     const stepNotes = currentNotesInClip[x] || {}
 
-    // get the original notes and sort them by note number
-    const originalNotes = Object.keys(stepNotes).map(Number).sort((a, b) => a - b)
+    // All notes present at this step (selected + unselected), sorted ascending.
+    // Used as the "occupied positions" reference to prevent collision.
+    const allNotesAtStep = Object.keys(stepNotes).map(Number).sort((a, b) => a - b)
 
-    // create a set to store the used targets
+    // Only operate on notes that are currently selected.
+    const selectionAtStep = selectedNotesInClip[x] || {}
+    const selectedNotes = allNotesAtStep.filter(y => selectionAtStep[y] === true)
+
+    // Nothing selected at this step — skip entirely.
+    if (selectedNotes.length === 0) continue
+
+    // Pre-populate usedTargets with positions held by UNSELECTED notes.
+    // These notes are not moving, so their pitches are permanently occupied.
+    // Also pre-populate with selected notes that are already in scale —
+    // they stay put, so their positions are taken as well.
     const usedTargets = new Set()
-
-    // loop through the original notes and correct them to the scale
-    for (const y of originalNotes) {
-      if (scaleNotes.includes(y)) {
+    for (const y of allNotesAtStep) {
+      if (!selectionAtStep[y]) {
+        // Unselected note — its position is permanently taken.
         usedTargets.add(y)
-        continue
+      } else if (scaleNotes.includes(y)) {
+        // Selected but already in scale — no move needed, position is taken.
+        usedTargets.add(y)
       }
+    }
+
+    // Process selected notes in ascending pitch order so that when two
+    // adjacent notes compete for the same target the lower one resolves first
+    // (consistent with the original behaviour).
+    for (const y of selectedNotes) {
+      // Already in scale — nothing to do (position already added to usedTargets above).
+      if (scaleNotes.includes(y)) continue
+
+      // Determine how far this note sustains so the collision check can test
+      // the full occupied window rather than just the onset step.
+      const noteEndX = getNoteEndStep(x, y)
 
       // find the closest higher and lower notes in the scale
       const { lower, higher } = findClosestHigherAndLower(y, scaleNotes)
       const candidates = []
 
-      // add the lower and higher notes to the candidates array
-      // when the note is not already used or in the original notes
-      // we basically want to have candidates where we can move the note to
       if (lower !== -Infinity) candidates.push(lower)
       if (higher !== Infinity) candidates.push(higher)
       if (candidates.length === 0) continue
 
-      // filter the candidates array to only have notes that are not used or in the original notes
-      const availableCandidates = candidates.filter(c => !usedTargets.has(c) && !originalNotes.includes(c))
+      // Primary filter: the candidate pitch must not be
+      //   (a) already assigned to a previously-processed note this iteration, AND
+      //   (b) occupied by ANY note (selected or not) anywhere in [x, noteEndX].
+      //
+      // Check (b) uses the full duration window, catching notes that begin
+      // after x but still overlap with the moved note — the bug this fixes.
+      const availableCandidates = candidates.filter(c =>
+        !usedTargets.has(c) && !isPitchOccupiedInRange(x, noteEndX, c)
+      )
       let targetY
 
-      // if there are no available candidates, we want to find the nearest scale note
       if (availableCandidates.length === 0) {
-        // filter the candidates array to only have notes that are not used
-        const possibleCandidates = candidates.filter(c => !usedTargets.has(c))
-        // if there are no possible candidates, find the nearest scale note
+        // Fallback: relax the "no selected-note overlap" constraint — a selected
+        // note at the candidate pitch is moving away, so landing there may be
+        // acceptable.  However, we still must not collide with an UNSELECTED note,
+        // which is stationary throughout [x, noteEndX].
+        const possibleCandidates = candidates.filter(c =>
+          !usedTargets.has(c) && !isPitchOccupiedByUnselectedInRange(x, noteEndX, c)
+        )
         if (possibleCandidates.length === 0) {
-          // find the nearest scale note
+          // Last resort: nearest scale note, guarded only by usedTargets.
           targetY = findNearestScaleNote(y, scaleNotes)
-          // if the target note is already used, continue
           if (usedTargets.has(targetY)) continue
         } else {
-          // if there are possible candidates, find the closest one to the original note
           targetY = possibleCandidates.reduce((prev, curr) => Math.abs(curr - y) < Math.abs(prev - y) ? curr : prev)
         }
       } else {
-        // if there are available candidates, find the closest one to the original note
         targetY = availableCandidates.reduce((prev, curr) => Math.abs(curr - y) < Math.abs(prev - y) ? curr : prev)
       }
 
@@ -332,6 +480,13 @@ function init () {
   cursorClipLauncher.addStepDataObserver(observingNotes)
   cursorClipArranger.scrollToKey(0)
   cursorClipLauncher.scrollToKey(0)
+
+  // Track note selection state via addNoteStepObserver.
+  // This observer fires whenever any property of a NoteStep changes,
+  // including when notes are selected or deselected in the piano roll.
+  // NoteStep.isIsSelected() is available since Bitwig API version 14.
+  cursorClipArranger.addNoteStepObserver(observingNoteSteps)
+  cursorClipLauncher.addNoteStepObserver(observingNoteSteps)
 
   /**
    * get the correct cursor clip based on the selected clip type
@@ -411,6 +566,32 @@ function init () {
   documentState.getSignalSetting('Write Note Stack', 'Scale Maker', 'Write Note Stack').addSignalObserver(() => {
     writeAllNotesOfScale(getCursorClip(), selectedScaleMode, selectedScale)
   })
+}
+
+/**
+ * Observer for NoteStep changes (including selection state).
+ * Called by both the Arranger and Launcher cursor clip observers registered in init().
+ * Maintains the selectedNotesInClip map so correctNotesToScale always has
+ * up-to-date selection information.
+ *
+ * @param {NoteStep} noteStep - The changed NoteStep object
+ */
+function observingNoteSteps (noteStep) {
+  const x = noteStep.x()
+  const y = noteStep.y()
+
+  if (selectedNotesInClip[x] === undefined) {
+    selectedNotesInClip[x] = []
+  }
+
+  // A note is "selected" only when it exists AND is selected in the piano roll.
+  // When the note is removed (state == Empty) isIsSelected() is false, so this
+  // correctly cleans up stale selection entries automatically.
+  if (noteStep.isIsSelected()) {
+    selectedNotesInClip[x][y] = true
+  } else {
+    delete selectedNotesInClip[x][y]
+  }
 }
 
 function flush () {}
