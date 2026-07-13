@@ -274,7 +274,7 @@ function writeNotesToClip (notes, cursorClip) {
     const position = (note.timestamp - bufferStart) / msPer16th
 
     // when position is negative, it means the note was played before the buffer window
-    // so make it start at 0 and make the length shorter by the ammount of the negative position.
+    // so make it start at 0 and make the length shorter by the amount of the negative position.
     // or nah, lets skip it
     if (position < 0) return
 
